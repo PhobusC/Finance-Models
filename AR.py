@@ -12,7 +12,7 @@ class AR():
         self.p = p
 
 
-    def autocovariance(self, data, lag: int) -> float:
+    def autocovariance(self, data: np.ndarray, lag: int) -> float:
         """
         Simple autocovariance calculation of O(n^2)
         
@@ -27,7 +27,7 @@ class AR():
         cov = np.sum((s1 - mean) * (s2 - mean)) / n
         return cov
     
-    def autocov_fft(self, data) -> np.ndarray:
+    def autocov_fft(self, data: np.ndarray) -> np.ndarray:
         """
         Autocovariance calculation using fft
 
@@ -45,6 +45,7 @@ class AR():
         padded_data = np.concatenate((centered_data, np.zeros(padded_length - n)))
 
         # FFT
+        # Convolution theorem and Wiener-Khinchin theorem (study more)
         fft_data = np.fft.fft(padded_data)
         power_spectrum = fft_data * np.conj(fft_data)
         autocov = np.fft.ifft(power_spectrum).real / n
@@ -56,8 +57,10 @@ class AR():
         """
         Fits the AR model to the provided data using the Yule-Walker equations.
         
-        Params: data - a list or array-like of historical data points. Shape (n, 1) (should only be one feature)
+        Params: data - a list or array-like of historical data points. Shape (n, 1) (univariate)
         http://www-stat.wharton.upenn.edu/~steele/Courses/956/Resource/YWSourceFiles/YW-Eshel.pdf
+
+        Returns: weights - the fitted weights of the AR model
         """
 
         # Calculate autocovariance and autocorrelation of order p
@@ -71,7 +74,6 @@ class AR():
         if(self.p == 0):
             return mean
 
-        autocov = np.zeros((self.p, self.p))
         
         # Pad with 0s so len = 2^k (optional)
         """
@@ -80,7 +82,18 @@ class AR():
         np_data = np.concatenate((np_data, np.zeros(padded_length - len(np_data))))
         """
         # Use FFT to compute autocovariance
-        pass
+        autocov = self.autocov_fft(data)
+        autocorr = autocov / autocov[0]
+
+        R = np.zeros((self.p, self.p))
+        r = np.zeros((self.p, 1))
+
+        for i in range(self.p):
+            r[i, 0] = autocorr[i+1]  # lag i+1 autocorr 
+            for j in range(self.p):
+                R[i, j] = autocorr[abs(i - j)]  # lag |i-j| autocorr
+
+        return np.linalg.solve(R, r)
 
 
     def fit_mle(self, data):
