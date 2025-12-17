@@ -83,17 +83,18 @@ class AR():
         """
         # Use FFT to compute autocovariance
         autocov = self.autocov_fft(data)
-        autocorr = autocov / autocov[0]
-
+        #autocorr = autocov / autocov[0]  # normalize by variance
+        
         R = np.zeros((self.p, self.p))
         r = np.zeros((self.p, 1))
 
         for i in range(self.p):
-            r[i, 0] = autocorr[i+1]  # lag i+1 autocorr 
+            r[i, 0] = autocov[i+1]  # lag i+1 autocov
             for j in range(self.p):
-                R[i, j] = autocorr[abs(i - j)]  # lag |i-j| autocorr
+                R[i, j] = autocov[abs(i - j)]  # lag |i-j| autocov
 
-        return np.linalg.solve(R, r)
+        self.weights = np.linalg.solve(R, r)
+        return self.weights
 
 
     def fit_mle(self, data):
@@ -109,10 +110,12 @@ class AR():
 data = pd.read_csv("daily_IBM.csv")
 data_prices = data['close'].iloc[:50].values
 model = AR(p=4)
-
+print(model.fit_yule_walker(data_prices))
+"""
 print(model.autocov_fft(data_prices))
 for lag in range(5):
     print(f"Lag {lag} autocovariance: {model.autocovariance(data_prices, lag)}")
 
 print(data_prices.var())
+"""
     
