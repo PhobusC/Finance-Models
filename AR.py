@@ -170,11 +170,11 @@ class AR():
     
 
 
-
+"""
 # Testing
 
 data = pd.read_csv("daily_IBM.csv")
-data_prices = data['close'].iloc[:50].values
+data_prices = data['close'].iloc[:80].values
 mean_price = np.mean(data_prices)
 model = AR(data_prices, p=4)
 print(model.fit_yule_walker())
@@ -192,9 +192,10 @@ print(model_sm.params)
 
 
 plt.plot(np.linspace(len(data_prices), len(data_prices)+19, 20), preds_sm, label='Statsmodels AR Predictions', color='green')
-plt.plot(predictions, label='AR Predictions', color='red')
-plt.plot(data_prices, label='Data', color='blue')
+plt.plot(np.linspace(len(data_prices), len(data_prices)+19, 20), predictions, label='AR Predictions', color='red')
+plt.plot(data['close'].iloc[:100].values, label='Data', color='blue')
 plt.title('AR Model Predictions vs Actual Data')
 plt.show()
+"""
 
     
