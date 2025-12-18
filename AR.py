@@ -1,18 +1,30 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+from statsmodels.tsa.ar_model import AutoReg
+from scipy.optimize import minimize
 
 class AR():
     """
     Autoregressive Model
-    Univariate
+    Univariate, covariance stationary
+    X_t = c + ϕ_1*X_(t-1) + ϕ_2*X_(t-2) + ... + ϕ_p*X_(t-p) + ε_t
     Params: p - the number of lag observations included in the model
     """
-    def __init__(self, p):
-        self.weights = np.zeros((p, 1))
+    def __init__(self, data, p: int):
+
+        if(len(data) <= p):
+            raise ValueError("Data length must be greater than p")
+        
+        self.data = data
+        self.weights = np.array([])
         self.p = p
 
+    def get_weights(self):
+        return self.weights
 
-    def autocovariance(self, data: np.ndarray, lag: int) -> float:
+    @staticmethod
+    def autocovariance( data: np.ndarray, lag: int) -> float:
         """
         Simple autocovariance calculation of O(n^2)
         
@@ -27,7 +39,8 @@ class AR():
         cov = np.sum((s1 - mean) * (s2 - mean)) / n
         return cov
     
-    def autocov_fft(self, data: np.ndarray) -> np.ndarray:
+    @staticmethod
+    def autocov_fft(data: np.ndarray, lag: int) -> np.ndarray:
         """
         Autocovariance calculation using fft
 
@@ -50,10 +63,9 @@ class AR():
         power_spectrum = fft_data * np.conj(fft_data)
         autocov = np.fft.ifft(power_spectrum).real / n
 
-        return autocov[:self.p+1]  # Return only up to lag p
+        return autocov[:lag+1]  # Return only up to lag p
 
-
-    def fit_yule_walker(self, data):
+    def fit_yule_walker(self):
         """
         Fits the AR model to the provided data using the Yule-Walker equations.
         
@@ -67,11 +79,11 @@ class AR():
         # phi = R^-1 * r
         # phi is the weights
         # r calculated with autocovariance, divided by total variance
-        if(len(data) <= self.p):
-            raise ValueError("Data length must be greater than p")
         
-        mean = np.mean(data)
+        
+        mean = np.mean(self.data)
         if(self.p == 0):
+            self.weights = np.array([[mean]])
             return mean
 
         
@@ -82,40 +94,107 @@ class AR():
         np_data = np.concatenate((np_data, np.zeros(padded_length - len(np_data))))
         """
         # Use FFT to compute autocovariance
-        autocov = self.autocov_fft(data)
+        autocov = self.autocov_fft(self.data, self.p)
         #autocorr = autocov / autocov[0]  # normalize by variance
-        
+
         R = np.zeros((self.p, self.p))
-        r = np.zeros((self.p, 1))
+        r = np.zeros(self.p)
 
         for i in range(self.p):
-            r[i, 0] = autocov[i+1]  # lag i+1 autocov
+            r[i] = autocov[i+1]  # lag i+1 autocov
             for j in range(self.p):
                 R[i, j] = autocov[abs(i - j)]  # lag |i-j| autocov
 
         self.weights = np.linalg.solve(R, r)
+        intercept = mean * (1 - np.sum(self.weights))
+        self.weights = np.insert(self.weights, 0, intercept)  # insert intercept term
         return self.weights
 
-
-    def fit_mle(self, data):
+    def fit_mle(self):
         """
         Fits the AR model to the provided data using Maximum Likelihood Estimation.
+
+        scipy.optimize.minimize negative log-likelihood
+        statsmodel inherit from GenericLikelihoodModel
+        Or use OLS
         
         Params: data - a list or array-like of historical data points. Shape (n, 1) (should only be one feature)
+
+        Returns: weights - the fitted weights of the AR model
         """
-        pass
+
+        Y = np.array(self.data[self.p:])
+        """
+        This does the same thing
+        X = np.array(
+            [np.concatenate(([1], data[::-1][len(data)-i-self.p:len(data)-i])) for i in range(len(data)-self.p)]
+        )
+        """
+
+        X = np.zeros((len(self.data)-self.p, self.p+1))
+        X[:, 0] = 1  # intercept column
+
+        for i in range(len(self.data)-self.p):
+            
+            # X_(t-1), X_(t-2), ..., X_(t-p) for observation at time t
+            X[i, 1:] = self.data[i:i+self.p][::-1]
+            
+        # OLS solution
+        self.weights = np.linalg.inv(X.T @ X) @ X.T @ Y
+
+        return self.weights
+    
+    def predict(self, start: int, end: int) -> np.ndarray:
+        """
+        Predicts future values using the fitted AR model.
+        
+        Params: start - the starting index for prediction (inclusive)
+                end - the ending index for prediction (inclusive)
+        
+        Returns: predictions - an array of predicted values from start to end
+        """
+        if(len(self.weights) == 0):
+            raise ValueError("Model must be fitted before prediction.")
+        
+        predictions = []
+        data_extended = list(self.data)
+
+        for t in range(start, end + 1):
+            pred = np.dot(self.weights, np.concatenate(([1], data_extended[t - self.p:t][::-1])))
+            predictions.append(pred)
+            data_extended.append(pred)  # Append prediction for future predictions
+
+        return np.array(predictions)
 
 
+    
+
+
+
+# Testing
 
 data = pd.read_csv("daily_IBM.csv")
 data_prices = data['close'].iloc[:50].values
-model = AR(p=4)
-print(model.fit_yule_walker(data_prices))
-"""
-print(model.autocov_fft(data_prices))
-for lag in range(5):
-    print(f"Lag {lag} autocovariance: {model.autocovariance(data_prices, lag)}")
+mean_price = np.mean(data_prices)
+model = AR(data_prices, p=4)
+print(model.fit_yule_walker())
+print(model.fit_mle())
+# Center the data for predictions
 
-print(data_prices.var())
-"""
+predictions = model.predict(start=len(data_prices), end=len(data_prices)+19)
+
+
+model_sm = AutoReg(data_prices, lags=4).fit()
+preds_sm = model_sm.predict(start=len(data_prices), end=len(data_prices)+19,)
+
+print(model_sm.params)
+
+
+
+plt.plot(np.linspace(len(data_prices), len(data_prices)+19, 20), preds_sm, label='Statsmodels AR Predictions', color='green')
+plt.plot(predictions, label='AR Predictions', color='red')
+plt.plot(data_prices, label='Data', color='blue')
+plt.title('AR Model Predictions vs Actual Data')
+plt.show()
+
     
