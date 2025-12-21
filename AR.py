@@ -8,7 +8,13 @@ class AR():
     """
     Autoregressive Model
     Univariate, covariance stationary
-    X_t = c + ϕ_1*X_(t-1) + ϕ_2*X_(t-2) + ... + ϕ_p*X_(t-p) + ε_t
+    Use PCAF to determine p
+    https://people.duke.edu/~rnau/411arim3.htm
+    Box-Jenkins?
+
+    Specifies a model of the form: X_t = c + ϕ_1*X_(t-1) + ϕ_2*X_(t-2) + ... + ϕ_p*X_(t-p) + ε_t
+    Use ADF to check for stationarity
+
     Params: p - the number of lag observations included in the model
     """
     def __init__(self, data, p: int):
