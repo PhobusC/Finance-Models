@@ -97,7 +97,8 @@ class MA():
         if result.success:
             self.weights = result.x[:self.q]
         else:
-            raise ValueError("Optimization failed")
+            print(f'Optimization failed: {result.message}')
+            self.weights = result.x[:self.q]
 
 
         return self.weights
