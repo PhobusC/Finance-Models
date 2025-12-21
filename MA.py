@@ -14,7 +14,7 @@ class MA():
     Only meaningful predictions up to q steps ahead
     """
     def __init__(self, data, q: int):
-        self.data = data
+        self.data = np.array(data)
         self.q = q
         self.weights = np.array([])
         
@@ -30,29 +30,27 @@ class MA():
 
         Returns: double log-likelihood value
         """
-
         
-        
-        state = np.zeros((q, 1)) # initial state
-
         mean = np.mean(data)
-
         centered_data = data - mean
-        R = np.zeros((q, 1)) # state noise vector
+        
+        state = np.zeros((q+1, 1)) # initial state
+        
+        R = np.zeros((q+1, 1)) # state noise vector
         R[0, 0] = 1
 
-        transition = np.zeros((q, q)) # state transition matrix
-        for i in range(q-1):
+        transition = np.zeros((q+1, q+1)) # state transition matrix
+        for i in range(q):
             transition[i+1, i] = 1
 
         # Get params
-        weights = params[:q]
-        Q = np.exp(params[q]) # state noise variance, log(var) to ensure positive variance
+        weights = np.zeros((1, q+1))
+        weights[0, 0] = 1
+        weights[0, 1:] = params[:q]
+        Q = np.exp(params[q]) + 1e-6 # state noise variance, log(var) to ensure positive variance
 
         # Initialize state covariance matrix
-        stateCov = 1e6 * np.eye(q)
-        
-
+        stateCov = 1e6 * np.eye(q+1)
 
         logLik = 0.0
 
@@ -65,20 +63,24 @@ class MA():
             pred_yCov = weights@pred_stateCov@weights.T # + observation noise, not needed
 
             # Filtering & forecast
-            kalmanGain = pred_stateCov@weights.T@np.linalg.inv(pred_yCov)
+            kalmanGain = pred_stateCov@weights.T/pred_yCov.item()
             state = predicted_state + kalmanGain@(centered_data[i]-pred_y)
-            #corrected_stateCov = (np.eye(q) - kalmanGain@weights)@pred_stateCov   # Joseph form
-            stateCov= pred_stateCov - kalmanGain@pred_yCov@kalmanGain.T # Alternative form/Joseph stabilized form
+            #stateCov = (np.eye(q) - kalmanGain@weights)@pred_stateCov   # Joseph form
+            #stateCov= pred_stateCov - kalmanGain@pred_yCov@kalmanGain.TAlternative form/Joseph stabilized form
+            stateCov = (np.eye(q+1)-kalmanGain@weights)@pred_stateCov@(np.eye(q+1) - kalmanGain@weights).T # Symmetric Joseph form
 
             # Optional smoothing
 
-            # Log-likelihood
-            logLik -= 0.5 * (np.log(2*np.pi*pred_yCov) + (centered_data[i]-pred_y)**2/pred_yCov.item())
+            # Negative log-likelihood
+            if pred_yCov.item() == 0:
+                print(i)
+                print(predicted_state, pred_y, pred_stateCov, pred_yCov, kalmanGain, state, stateCov)
+                raise ValueError()
+            logLik = 0.5 * (np.log(2*np.pi*pred_yCov) + (centered_data[i]-pred_y)**2/(pred_yCov.item() + 1e-8))
 
 
-
-
-        return logLik
+        
+        return logLik.item()
 
     def fit_Kalman(self):
         """
@@ -91,15 +93,15 @@ class MA():
 
 
         x0 = np.zeros(self.q + 1)
-        x0[-1] = 0.5 * np.var(self.data)
-
+        x0[-1] = np.log(0.5 * np.var(self.data))
+        bnds = [(None, None)] * self.q + [(-20, 20)]
+        result = minimize(MA.kalman_negloglik, x0, args=(self.data, self.q), method='L-BFGS-B', bounds = bnds)
         
-        
+        if result.success:
+            self.weights = result.x[:self.q]
+        else:
+            raise ValueError("Optimization failed")
 
-
-
-            
-            
 
         return self.weights
     
@@ -118,3 +120,8 @@ class MA():
     
     def get_Weights(self):
         return self.weights
+    
+data = np.array(pd.read_csv("daily_IBM.csv").close)
+
+model = MA(data, 4)
+print(model.fit_Kalman())
