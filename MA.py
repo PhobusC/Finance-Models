@@ -19,12 +19,12 @@ class MA():
         self.weights = np.array([])
         
     @staticmethod
-    def kalman_loglik(params, data, q):
+    def kalman_negloglik(params, data, q):
         """
-        Log-likelihood function for the MA model using the Kalman filter.
+        Negative log-likelihood function for the MA model using the Kalman filter.
         https://web.mit.edu/kirtley/kirtley/binlustuff/literature/control/Kalman%20filter.pdf
 
-        Params: params - array of parameters [θ_1, θ_2, ..., θ_q]
+        Params: params - array of parameters [θ_1, θ_2, ..., θ_q, log(var)]
                 data - array of time series data
                 q - order of the MA model
 
@@ -47,7 +47,7 @@ class MA():
 
         # Get params
         weights = params[:q]
-        Q = params[q] # state noise variance
+        Q = np.exp(params[q]) # state noise variance, log(var) to ensure positive variance
 
         # Initialize state covariance matrix
         stateCov = 1e6 * np.eye(q)
@@ -64,26 +64,21 @@ class MA():
             pred_stateCov = transition@stateCov@transition.T + Q*R@R.T
             pred_yCov = weights@pred_stateCov@weights.T # + observation noise, not needed
 
-            # Filtering & update
+            # Filtering & forecast
             kalmanGain = pred_stateCov@weights.T@np.linalg.inv(pred_yCov)
-            corrected_state = predicted_state + kalmanGain@(centered_data[i]-pred_y)
+            state = predicted_state + kalmanGain@(centered_data[i]-pred_y)
             #corrected_stateCov = (np.eye(q) - kalmanGain@weights)@pred_stateCov   # Joseph form
-            corrected_stateCov = pred_stateCov - kalmanGain@pred_yCov@kalmanGain.T # Alternative form/Joseph stabilized form
-
-            # Forecast
-            state = corrected_state
-            stateCov = corrected_stateCov
+            stateCov= pred_stateCov - kalmanGain@pred_yCov@kalmanGain.T # Alternative form/Joseph stabilized form
 
             # Optional smoothing
 
-
             # Log-likelihood
-            logLik += 
+            logLik -= 0.5 * (np.log(2*np.pi*pred_yCov) + (centered_data[i]-pred_y)**2/pred_yCov.item())
 
 
 
 
-        return 0
+        return logLik
 
     def fit_Kalman(self):
         """
@@ -98,7 +93,7 @@ class MA():
         x0 = np.zeros(self.q + 1)
         x0[-1] = 0.5 * np.var(self.data)
 
-        bnds = ((None, None), (0, None))
+        
         
 
 
