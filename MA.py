@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
+import matplotlib.pyplot as plt
 
 
 
@@ -60,10 +61,10 @@ class MA():
             predicted_state = transition@state
             pred_y = weights@predicted_state
             pred_stateCov = transition@stateCov@transition.T + Q*R@R.T
-            pred_yCov = weights@pred_stateCov@weights.T # + observation noise, not needed
+            pred_yCov = max((weights@pred_stateCov@weights.T).item(), 1e-8) # + observation noise, not needed
 
             # Filtering & forecast
-            kalmanGain = pred_stateCov@weights.T/pred_yCov.item()
+            kalmanGain = pred_stateCov@weights.T/pred_yCov
             state = predicted_state + kalmanGain@(centered_data[i]-pred_y)
             #stateCov = (np.eye(q) - kalmanGain@weights)@pred_stateCov   # Joseph form
             #stateCov= pred_stateCov - kalmanGain@pred_yCov@kalmanGain.TAlternative form/Joseph stabilized form
@@ -72,11 +73,7 @@ class MA():
             # Optional smoothing
 
             # Negative log-likelihood
-            if pred_yCov.item() == 0:
-                print(i)
-                print(predicted_state, pred_y, pred_stateCov, pred_yCov, kalmanGain, state, stateCov)
-                raise ValueError()
-            logLik = 0.5 * (np.log(2*np.pi*pred_yCov) + (centered_data[i]-pred_y)**2/(pred_yCov.item() + 1e-8))
+            logLik += 0.5 * (np.log(2*np.pi*pred_yCov) + (centered_data[i]-pred_y)**2/pred_yCov)
 
 
         
@@ -105,8 +102,6 @@ class MA():
 
         return self.weights
     
-    
-
     def fit_mle(self):
         """
         Fits the MA model using conditional MLE
@@ -115,13 +110,43 @@ class MA():
     def predict(self, start: int, end: int):
         if(len(self.weights) == 0):
             raise ValueError("Model is not fitted yet. Please call fit() method first.")
+        
+        if(start > len(self.data) or end < 0 or start > end):
+            raise ValueError()
+        
+
         # Placeholder for prediction logic
-        return [0] * (end - start + 1)
+        mean = np.mean(self.data)
+        predictions = []
+        resids = np.zeros(self.q)
+
+        for i in range(start):
+            predict = mean + np.dot(self.weights, resids)
+            resid = (self.data[i] - predict).item()
+            
+            resids = np.concatenate(([resid], resids[:-1]))
+
+        j = end-start+1
+        for i in range(j):
+            predict = mean + np.dot(self.weights, resids)
+            predictions = np.append(predictions, predict)
+            
+            resids = np.concatenate(([0], resids[:-1]))
+
+        plt.plot(self.data, color='blue', label='Actual price')
+        plt.plot(np.linspace(start, end, num=j), predictions, 
+                 color='red', label = 'Predicted price')
+        plt.show()
+
+        return predictions
     
     def get_Weights(self):
         return self.weights
     
 data = np.array(pd.read_csv("daily_IBM.csv").close)
 
-model = MA(data, 4)
-print(model.fit_Kalman())
+q = 4
+model = MA(data, q)
+weights = model.fit_Kalman()
+model.predict(80, 83)
+
