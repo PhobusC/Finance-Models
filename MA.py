@@ -85,6 +85,7 @@ class MA():
         First turns the data into a state space model 
             and then applies the Kalman filter to estimate the parameters.
 
+        CHECK INVERTIBILITY
         
         """
 
@@ -109,6 +110,9 @@ class MA():
         """
 
     def predict(self, start: int, end: int):
+        """
+        Plots predictions using fitted model, starting from the specified indices
+        """
         if(len(self.weights) == 0):
             raise ValueError("Model is not fitted yet. Please call fit() method first.")
         
@@ -116,38 +120,42 @@ class MA():
             raise ValueError()
         
 
-        # Placeholder for prediction logic
         mean = np.mean(self.data)
         predictions = []
         resids = np.zeros(self.q)
-
+        print(mean)
         for i in range(start):
             predict = mean + np.dot(self.weights, resids)
-            resid = (self.data[i] - predict).item()
+            resid = self.data[i] - predict
             
             resids = np.concatenate(([resid], resids[:-1]))
 
-        j = end-start+1
-        for i in range(j):
+        
+        for i in range(start, end+1):
             predict = mean + np.dot(self.weights, resids)
             predictions = np.append(predictions, predict)
             
             resids = np.concatenate(([0], resids[:-1]))
-
-        plt.plot(self.data, color='blue', label='Actual price')
-        plt.plot(np.linspace(start, end, num=j), predictions, 
-                 color='red', label = 'Predicted price')
-        plt.show()
-
+        
         return predictions
     
     def get_Weights(self):
         return self.weights
     
+
 data = np.array(pd.read_csv("daily_IBM.csv").close)
 
 q = 4
 model = MA(data, q)
 weights = model.fit_Kalman()
-model.predict(80, 83)
+start = 70
+end = 90
+predictions=model.predict(70, 90)
+print(model.weights)
+
+plt.plot(data, color='blue', label='Actual price')
+plt.plot(np.linspace(start, end, num=end-start+1), predictions, 
+        color='red', label = 'Predicted price')
+plt.show()
+
 
