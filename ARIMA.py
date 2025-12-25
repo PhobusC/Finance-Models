@@ -58,10 +58,10 @@ data = pd.read_csv("daily_IBM.csv")
 data_prices = data['close'].values
 
 
-model = ARIMA(data_prices, 0, 0, 1)
+model = ARIMA(data_prices, 0, 1, 1)
 model.fit()
 
-test_model = statsARIMA(data_prices, order=(0, 0, 1)).fit()
+test_model = statsARIMA(data_prices, order=(0, 1, 1)).fit()
 
 start = 70
 end = 90

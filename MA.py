@@ -59,7 +59,7 @@ class MA():
         for i in range(len(data)):
             # Prediction step
             predicted_state = transition@state
-            pred_y = (weights@predicted_state).item()
+            pred_y = weights@predicted_state
             pred_stateCov = transition@stateCov@transition.T + Q*R@R.T
             # 1e-8 prevents division by 0
             pred_yCov = max((weights@pred_stateCov@weights.T).item(), 1e-8) # + observation noise, not needed
