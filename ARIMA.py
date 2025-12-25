@@ -3,6 +3,7 @@ from MA import MA
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from statsmodels.tsa.arima.model import ARIMA as statsARIMA
 
 class ARIMA():
     def __init__(self, data, p: int, d: int, q: int):
@@ -22,27 +23,31 @@ class ARIMA():
         self.ma.fit_Kalman()
 
     def predict(self, start: int, end: int):
-        ar_pred = self.ar.predict(start, end)
-        ma_pred = self.ma.predict(start, end)
-        print(ar_pred)
-        print(ma_pred)
+        ar_pred = 0
+        ma_pred = 0
+
+        # Subtract self.d bc differencing
+        ar_pred = self.ar.predict(start-self.d, end-self.d)
+        ma_pred = self.ma.predict(start-self.d, end-self.d)
+
         # Un-difference series
         predictions = ar_pred + ma_pred - np.mean(self.ar.data)
-
+        
         # Redifference to find first values
         # Alternatively, for i in [self.d-1, ... 0], find ith difference of original series 
         #       using binomal expanison
 
-        diff = self.data.copy()
-        first_vals = [diff[0]]
+        diffs = [self.data]
+        for _ in range(self.d):
+            diffs.append(np.diff(diffs[-1]))
 
-        for _ in range(1, self.d):
-            diff = np.diff(diff)
-            first_vals.append(diff[0])
+        
+        first_vals = [diffs[k-1][start-k] for k in range(1, self.d+1)]
 
         
         for i in range(self.d):
             predictions = np.cumsum(predictions) + first_vals[self.d-i-1]
+            
         
         
 
@@ -55,13 +60,18 @@ data_prices = data['close'].values
 
 model = ARIMA(data_prices, 0, 0, 1)
 model.fit()
-print(np.mean(data_prices))
-print(model.ar.weights)
-print(model.ma.weights)
-predictions = model.predict(70, 90)
-print(predictions.shape)
-plt.plot(np.linspace(70, 90, 21), predictions, color='red', label='Prediction')
+
+test_model = statsARIMA(data_prices, order=(0, 0, 1)).fit()
+
+start = 70
+end = 90
+predictions = model.predict(start, end)
+test_pred = test_model.predict(start=start, end=end)
+plt.plot(np.linspace(start, end, end-start+1), predictions, color='red', label='Prediction')
+plt.plot(np.linspace(start, end, end-start+1), test_pred,  color='purple', label='Statsmodel Prediction')
 plt.plot(data_prices, color='blue', label='Actual prices')
+
+plt.title("ARIMA predictions")
 plt.legend()
 
 plt.show()

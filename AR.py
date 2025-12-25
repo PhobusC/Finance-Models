@@ -159,8 +159,7 @@ class AR():
         
         Returns: predictions - an array of predicted values from start to end
         """
-        if(len(self.weights) == 0):
-            raise ValueError("Model must be fitted before prediction.")
+        
         
         predictions = []
         data_extended = list(self.data)
@@ -180,25 +179,24 @@ class AR():
 # Testing
 
 data = pd.read_csv("daily_IBM.csv")
-data_prices = data['close'].iloc[:80].values
+data_prices = data['close'].values
 mean_price = np.mean(data_prices)
 model = AR(data_prices, p=4)
-print(model.fit_yule_walker())
-print(model.fit_mle())
+model.fit_mle()
 # Center the data for predictions
 
-predictions = model.predict(start=len(data_prices), end=len(data_prices)+19)
+predictions = model.predict(start=70, end=90)
 
 
 model_sm = AutoReg(data_prices, lags=4).fit()
-preds_sm = model_sm.predict(start=len(data_prices), end=len(data_prices)+19,)
+preds_sm = model_sm.predict(start=70, end=90)
 
 print(model_sm.params)
 
 
 
-plt.plot(np.linspace(len(data_prices), len(data_prices)+19, 20), preds_sm, label='Statsmodels AR Predictions', color='green')
-plt.plot(np.linspace(len(data_prices), len(data_prices)+19, 20), predictions, label='AR Predictions', color='red')
+plt.plot(np.linspace(70, 90, 21), preds_sm, label='Statsmodels AR Predictions', color='green')
+plt.plot(np.linspace(70, 90, 21), predictions, label='AR Predictions', color='red')
 plt.plot(data['close'].iloc[:100].values, label='Data', color='blue')
 plt.title('AR Model Predictions vs Actual Data')
 plt.show()

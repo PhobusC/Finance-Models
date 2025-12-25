@@ -59,8 +59,9 @@ class MA():
         for i in range(len(data)):
             # Prediction step
             predicted_state = transition@state
-            pred_y = weights@predicted_state
+            pred_y = (weights@predicted_state).item()
             pred_stateCov = transition@stateCov@transition.T + Q*R@R.T
+            # 1e-8 prevents division by 0
             pred_yCov = max((weights@pred_stateCov@weights.T).item(), 1e-8) # + observation noise, not needed
 
             # Filtering & forecast
@@ -92,11 +93,11 @@ class MA():
 
         x0 = np.zeros(self.q + 1)
         x0[-1] = np.log(0.5 * np.var(self.data))
-        bnds = [(None, None)] * self.q + [(-20, 20)]
+        bnds = [(-0.99, 0.99)] * self.q + [(-20, 20)]
         result = minimize(MA.kalman_negloglik, x0, args=(self.data, self.q), method='L-BFGS-B', bounds = bnds)
         
         if result.success:
-            self.weights = result.x[:self.q]
+            self.weights = np.insert(result.x[:self.q], 0, np.mean(self.data))
         else:
             print(f'Optimization failed: {result.message}')
             self.weights = result.x[:self.q]
@@ -113,49 +114,55 @@ class MA():
         """
         Plots predictions using fitted model, starting from the specified indices
         """
-        if(len(self.weights) == 0):
-            raise ValueError("Model is not fitted yet. Please call fit() method first.")
-        
+
         if(start > len(self.data) or end < 0 or start > end):
             raise ValueError()
-        
 
-        mean = np.mean(self.data)
+        if(len(self.weights) == 0) :
+            raise ValueError("Model must be fitted before prediction")
+        
+        if(self.q == 0):
+            return np.full(end-start+1, self.weights[0])
+
+
         predictions = []
         resids = np.zeros(self.q)
-        print(mean)
-        for i in range(start):
-            predict = mean + np.dot(self.weights, resids)
-            resid = self.data[i] - predict
-            
-            resids = np.concatenate(([resid], resids[:-1]))
 
-        
-        for i in range(start, end+1):
-            predict = mean + np.dot(self.weights, resids)
-            predictions = np.append(predictions, predict)
+
+        # Calculate residuals up to start then add to predictions
+        for i in range(end+1):
+            predict = self.weights[0] + np.dot(self.weights[1:], resids)
+
+            # Add prediction if i is at least start
+            if i >= start:
+                predictions = np.append(predictions, predict)
             
-            resids = np.concatenate(([0], resids[:-1]))
-        
+            # Use data if available for innovations
+            if i < len(self.data):
+                resids = np.concatenate(([self.data[i]-predict], resids[:-1]))
+            else:
+                resids = np.concatenate(([0], resids[:-1]))
+            
         return predictions
     
     def get_Weights(self):
         return self.weights
     
-
+"""
 data = np.array(pd.read_csv("daily_IBM.csv").close)
 
-q = 4
+q = 0
 model = MA(data, q)
 weights = model.fit_Kalman()
 start = 70
 end = 90
 predictions=model.predict(70, 90)
-print(model.weights)
+
 
 plt.plot(data, color='blue', label='Actual price')
 plt.plot(np.linspace(start, end, num=end-start+1), predictions, 
         color='red', label = 'Predicted price')
 plt.show()
+"""
 
 
