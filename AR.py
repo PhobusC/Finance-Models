@@ -72,6 +72,7 @@ class AR():
         return autocov[:lag+1]  # Return only up to lag p
 
     def fit_yule_walker(self):
+        print("fitting")
         """
         Fits the AR model to the provided data using the Yule-Walker equations.
         
@@ -89,7 +90,7 @@ class AR():
         
         mean = np.mean(self.data)
         if(self.p == 0):
-            self.weights = np.array([[mean]])
+            self.weights = np.array([mean])
             return mean
 
         
