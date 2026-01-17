@@ -17,7 +17,7 @@ def aic():
 
 class KalmanFilter:
     """
-    Represents a Kalman Filter with a given state-space representation
+    Represents a Kalman Filter with a given state-space representation.
     """
     def __init__(self, data):
         self.data = data
