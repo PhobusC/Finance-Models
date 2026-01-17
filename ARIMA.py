@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from statsmodels.tsa.arima.model import ARIMA as statsARIMA
+from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 class ARIMA():
     def __init__(self, data, p: int, d: int, q: int):
@@ -34,7 +35,7 @@ class ARIMA():
         # Redifference to find first values
         # Alternatively, for i in [self.d-1, ... 0], find ith difference of original series 
         #       using binomal expanison
-
+        
         diffs = [self.data]
         for _ in range(self.d-1):
             diffs.append(np.diff(diffs[-1])) # List of differenced series (diff[i] = ith differenced series)
@@ -46,23 +47,25 @@ class ARIMA():
             predictions = np.cumsum(predictions) + first_vals[-(i+1)]
             
         
-    
+        
         return predictions
     
 
 data = pd.read_csv("daily_IBM.csv")
 data_prices = data['close'].values
 
-d = 1
-model = ARIMA(data_prices, 0, d, 0)
+p=1
+d=1
+q=0
+model = ARIMA(data_prices, p, d, q)
 model.fit()
 
-test_model = statsARIMA(data_prices, order=(0, d, 0)).fit()
+test_model = SARIMAX(data_prices, order=(p, d, q)).fit()
 print(model.ar.weights, model.ma.weights)
 print(test_model.params) # in the format [ar.L1, ma.L1, const, var]
 
-start = 80
-end = 90
+start = 60
+end = 110
 predictions = model.predict(start, end)
 test_pred = test_model.predict(start=start, end=end)
 

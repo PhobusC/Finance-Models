@@ -161,14 +161,14 @@ class AR():
         Returns: predictions - an array of predicted values from start to end
         """
         
-        
         predictions = []
         data_extended = list(self.data)
 
         for t in range(start, end + 1):
             pred = np.dot(self.weights, np.concatenate(([1], data_extended[t - self.p:t][::-1])))
             predictions.append(pred)
-            data_extended.append(pred)  # Append prediction for future predictions
+            if t >= len(self.data):
+                data_extended.append(pred)  # Append prediction for future predictions
 
         return np.array(predictions)
 
