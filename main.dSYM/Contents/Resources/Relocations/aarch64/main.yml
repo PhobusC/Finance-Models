@@ -1,0 +1,5 @@
+---
+triple:          'arm64-apple-darwin'
+binary-path:     '/Users/phoebuschen/VS Code Projects/Finance Models/main'
+relocations:     []
+...

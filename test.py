@@ -1,15 +1,13 @@
 import numpy as np
+from statsmodels.tsa.statespace.mlemodel import MLEModel
+"""
+data = np.random.normal(0, 1, 50)
 
+model = GenericLikelihoodModel(data)
+print(model.loglike(np.random.normal(0, 1, 50)))
+"""
 
-testArr = np.random.rand(10)
-diff1 = np.diff(testArr)
-diff2 = np.diff(diff1)
+y = np.random.normal(0, 1, 50)
+print(y.shape)
 
-print(testArr)
-print(diff1)
-print(diff2)
-print(testArr.shape, diff1.shape, diff2.shape)
-print()
-
-print(np.cumsum(np.cumsum(diff2[3:]) + diff1[3]) + testArr[4])
-
+y@None
