@@ -1,9 +1,11 @@
 import numpy as np
+import pandas as pd
 from tools import MLEModel
+from MA import MA
 
 class MA2(MLEModel):
     def __init__(self, endog, q=0):
-        super().__init__(endog, k_states=q+1)
+        super().__init__(endog, k_states=q+1, k_posdef=1)
         self.q = q
         self._init_Repr()
 
@@ -14,45 +16,50 @@ class MA2(MLEModel):
 
         ssm["T"] = np.zeros((self.filter.k_states, self.filter.k_states))
         ssm["T"][0, 0] = 1
-        for i in range(q):
-            ssm["T"][i+2, i+1] = 1
+        for i in range(1, self.q):
+            ssm["T"][i+1, i] = 1
 
-        ssm["R"] = np.zeros((self.filter.k_states, 1))
+        ssm["d"] = np.zeros((1))
+        ssm["c"] = np.zeros((self.filter.k_states))
+
+        ssm["R"] = np.zeros((self.filter.k_states, self.filter.k_posdef))
         ssm["R"][1, 0] = 1
 
         initial_state = np.zeros((self.filter.k_states, 1))
         initial_state[0, 0] = 1
         ssm['init_state'] = initial_state
 
-        initial_cov = 1e6 * np.eye(self.filter.k_states)
+        initial_cov = 1e6 * np.eye(self.filter.k_posdef)
         ssm['init_cov'] = initial_cov
-    
 
-
-        
         self.filter.setRepr(ssm)
-
-    def fit():
-
-        result = super().fit()
-        return result
     
     def _init_params(self):
         x0 = np.zeros(self.q + 1)
-        x0[-1] = np.log(0.5 * np.var(self.data))
+        x0[-1] = np.log(0.5 * np.var(self.endog))
         return x0
 
     def change_spec(self, params):
         """
         Changes the states space model for a MA model
-        params should be in the form [theta_1, ... , theta_q, var_eps]
+        params should be in the form [theta_1, ... , theta_q, log(var_eps)]
         """
-        weights = np.concatenate(np.array[1], params[:-1])
-        var = np.exp(params[-1]) * np.eye(self.filter.k_states)
+        print("\n" * 3)
+        print(params)
+        weights = np.concatenate((np.array([1]), params[:-1]))
+        weights = weights[None, :]
+        var = np.exp(params[-1]) * np.eye(self.filter.k_posdef)
 
         self.filter.setRepr({'Z': weights, 'Q': var})
 
 
         
-    
+data = pd.read_csv('daily_IBM.csv')
+data_prices = np.array(data[['close']]).T
+print(data_prices[:, :5])
+model = MA2(data_prices, 2)
+test_model = MA(data_prices, 2)
+result = model.fit()
+
+
 

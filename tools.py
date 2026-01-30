@@ -24,10 +24,10 @@ def aic(llk, nmodel_params) -> float:
 
 
 class MLEModel:
-    def __init__(self, endog, exog=None):
+    def __init__(self, endog, k_states, k_posdef=None, exog=None):
         self.endog = endog
         self.exog = exog
-        self.filter = KalmanFilter(self, endog, exog)
+        self.filter = KalmanFilter(endog, k_states, k_posdef=k_posdef, exog=exog)
 
     def fit(self, initial_params=None, method=None, func=None):
         """
@@ -40,11 +40,13 @@ class MLEModel:
         else:
             x0 = self._init_params()
         
-        params = minimize(self.fit_func, x0, args=(func), method=method)
-        self.change_spec(params)
+        results = minimize(self.fit_func, x0, args=(func), method=method)
+        if not results.success:
+            print(f'Optimization failed: {results.message}')
 
-        result = Results(ssm=self.filter)
-        return result
+
+        self.change_spec(results.x)
+        return Results(self.filter)
     
     
     
@@ -102,10 +104,11 @@ class KalmanFilter:
         self.endog = endog # (n_features, nobs)
         self.exog = exog # (n_obs, m_features)
         self.k_states = k_states
+        self.k_posdef = k_posdef
         self.time_invariant = time_invariant
 
-        k_endog = self.endog.shape[1]
-        nobs = self.endog.shape[0]
+        k_endog = self.endog.shape[0]
+        nobs = self.endog.shape[1]
         if k_posdef is None:
             k_posdef = k_states
         elif k_posdef > k_states:
@@ -122,7 +125,7 @@ class KalmanFilter:
             'H': (k_endog, k_endog, nobs),
             'Q': (k_posdef, k_posdef, nobs),
             'init_state': (k_states, 1),
-            'init_cov': (k_states, k_states)
+            'init_cov': (k_posdef, k_posdef)
         }
 
     
@@ -132,15 +135,19 @@ class KalmanFilter:
         Updates the transition matrices
         ssm should be a dictionary according to the statsmodel naming keys
         """
-
+        
+        
         for key in matrices:
             if not key in self.SSM_REPR_NAMES:
                 raise NameError(f'{key} is not a valid key')
-            elif self.time_invariant and not \
-                (len(matrices[key].shape) == 2 and matrices[key].shape[:2] == self.shapes[key][:2]):
-                raise ValueError(f'{key} matrix is not the correct shape, expected {self.shapes[key][:2]}, but got {matrices[key].shape[:2]}')
+            elif key == 'init_state' or key == 'init_cov':
+                pass
+            elif self.time_invariant:
+                potential_shape_len = len(self.shapes[key])-1
+                if not (len(matrices[key].shape) == potential_shape_len and matrices[key].shape == self.shapes[key][:potential_shape_len]):
+                    raise ValueError(f'{key} matrix is not the correct shape, expected {self.shapes[key][:potential_shape_len]}, but got {matrices[key].shape}')
 
-            if matrices[key].shape != self.shapes[key]:
+            elif matrices[key].shape != self.shapes[key]:
                 raise ValueError(f'{key} matrix is not the correct shape, expected {self.shapes[key]}, but got {matrices[key].shape}')
             
             setattr(self, "_" + key, matrices[key])
@@ -151,9 +158,6 @@ class KalmanFilter:
         """
         Calculates loglike for the given state-space model
         """
-        if not hasattr(self, "ssm"):
-            raise KalmanFilter.StateNotSetError() # TODO move this to nloglikeobs
-
         self.loglikelihood = self.loglikeobs().sum(0)
         return self.loglikelihood
     
@@ -161,18 +165,59 @@ class KalmanFilter:
         return -1 * self.loglike()
     
 
-    # TODO implement
+    
     def loglikeobs(self):
         """
         Calculates the loglikelihood at each observation
         """
-        pass
+        # TODO implement check that ssm has been initialized
+        
+        state = self._init_state
+        cov = self._init_cov
+        
+        loglikeobs = []
+        for i in range(len(self.endog)):
+            
+            # Prediction
+            obs = self.endog[i]
+            try:
+                if self.time_invariant:
+                    F = cov + self._Q
+                    K = cov + np.linalg.inv(F) # TODO CHECK
+
+                    estim_error = obs - self._Z@state - self._d
+                    pred_state = state + self._F@self._P.T@np.linalg.inv(self._F)@estim_error
+
+                else:
+                    pass
+                    
+
+
+
+            except NameError as n:
+                print(f"SSM must be fully specified prior to fitting\n{n}")
+                raise n
+            except Exception as e:
+                raise e
+
+
+            if i == 0:
+                loglike = 0.0
+            else:
+                loglike = 0.0#TODO Implement 
+            
+            loglikeobs.append(loglike)
+        
+        
+        return np.array(loglikeobs)
 
 
 
 
 
 
+
+    # TODO consider adding a one pass filter method that adds useful stats as attributes
     class StateNotSetError(Exception):
         def __init__(self, message="SSM matrices must be set prior to fitting"):
             self.message = message
@@ -183,5 +228,19 @@ class KalmanFilter:
 
 
 class Results:
-    def __init__(self):
+    def __init__(self, filter):
+        self.filter = filter
+
+    def predict(self, start, end):
+        """
+        Predicts endog from start to end
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def params(self):
+        """
+        Gets model parameters
+        """
         pass
