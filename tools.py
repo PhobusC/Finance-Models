@@ -1,7 +1,9 @@
 import numpy as np
 from scipy.optimize import minimize
+from scipy.linalg import ldl, solve_triangular
 from abc import abstractmethod
 from functools import partial
+
 
 
 
@@ -198,13 +200,23 @@ class KalmanFilter:
                 if self.time_invariant:
                     estim_error = obs - self._Z@state - self._d
                     cov_error = self._Z@self._P@self._Z.T + self._H
-                    gain = cov@self._Z.T@np.linalg.inv(cov_error)
+                    cov_error = 0.5 * (cov_error + cov_error.T)  # Enforce symmetry
+
+                    lower, d, perm = ldl(cov_error, lower=True)  # LDL form of F
+
+                    # Calculate gain with LDL TODO CHECK THIS AGAIN
+                    PZt = state@self._Z.T
+                    W = solve_triangular(lower[perm], PZt.T, lower=True)
+                    U = np.array([W[i]/d[i, i] for i in range(W.shape[0])])
+                    gain = solve_triangular(lower[perm].T, U, lower=False).T
+
+                    #gain = cov@self._Z.T@np.linalg.inv(cov_error)
 
                     state = self._T@(state + gain@estim_error) + self._c
                     
                     #Joseph form
                     post_cov = (np.eye(self.k_states)-gain@self._Z)@cov@(np.eye(self.k_states)-gain@self._Z).T + gain@self._H@gain.T
-                    post_cov = 0.5 * (post_cov + post_cov.T)
+                    post_cov = 0.5 * (post_cov + post_cov.T)  # Enforce symmetry
 
                     cov = self._T@post_cov@self._T.T + self._R@self._Q@self._R.T
 

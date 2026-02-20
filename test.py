@@ -1,13 +1,26 @@
 import numpy as np
 from statsmodels.tsa.statespace.mlemodel import MLEModel
+from scipy.linalg import ldl
 """
 data = np.random.normal(0, 1, 50)
 
 model = GenericLikelihoodModel(data)
 print(model.loglike(np.random.normal(0, 1, 50)))
 """
+"""
+y = np.random.random((3, 3))
+y = y + y.T
+print(y)
 
-y = np.eye(4)
-print(y.shape)
+l, d, perm = ldl(y, lower=False)
+print(l)
+print(d)
+print(perm)
 
-print(np.array([4])@y)
+print(l@d@l.T)
+"""
+
+x = np.random.random((3, 3))
+y = np.random.random((3, 3))
+print(x@y.T)
+print((x@y).T)
