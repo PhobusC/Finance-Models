@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.optimize import minimize
 from abc import abstractmethod
+from functools import partial
 
 
 
@@ -60,7 +61,7 @@ class MLEModel:
         if func is not None: # TODO implement more fitting methods
             pass
         else:
-            obj_func = self.filter.nloglike
+            obj_func = partial(self.filter.nloglike, fit=True)
         
         return obj_func()
     
@@ -97,7 +98,8 @@ class KalmanFilter:
     NOT YET IMPLEMENTING EXOG OR SMOOTHING
     """
 
-    SSM_REPR_NAMES = ['Z', 'T', 'd', 'c', 'R', 'H', 'Q', 'init_state', 'init_cov']
+    SSM_REPR_NAMES = ['Z', 'T', 'd', 'c', 'R', 'H', 'Q']
+    SSM_INIT_NAMES = ['init_state', 'init_cov']
 
 
     def __init__(self, endog, k_states, exog=None, k_posdef=None, time_invariant=True):
@@ -106,6 +108,7 @@ class KalmanFilter:
         self.k_states = k_states
         self.k_posdef = k_posdef
         self.time_invariant = time_invariant
+        self.diffuse=False
 
         k_endog = self.endog.shape[0]
         nobs = self.endog.shape[1]
@@ -119,13 +122,13 @@ class KalmanFilter:
         self.shapes = { #TODO check this again
             'Z': (k_endog, k_states, nobs),
             'T': (k_states, k_states, nobs),
-            'd': (k_endog, nobs), 
-            'c': (k_states, nobs), 
-            'R': (k_states, k_posdef, nobs),
+            'd': (k_endog, 1, nobs), # Hacky fix for d and c, might be better to make it rank 2 in future
+            'c': (k_states, 1, nobs), 
+            'R': (k_states, k_states, nobs),#(k_states, k_posdef, nobs),
             'H': (k_endog, k_endog, nobs),
-            'Q': (k_posdef, k_posdef, nobs),
+            'Q': (k_states, k_states, nobs),#(k_posdef, k_posdef, nobs),
             'init_state': (k_states, 1),
-            'init_cov': (k_posdef, k_posdef)
+            'init_cov': (k_states, k_states)#(k_posdef, k_posdef)
         }
 
     
@@ -140,8 +143,6 @@ class KalmanFilter:
         for key in matrices:
             if not key in self.SSM_REPR_NAMES:
                 raise NameError(f'{key} is not a valid key')
-            elif key == 'init_state' or key == 'init_cov':
-                pass
             elif self.time_invariant:
                 potential_shape_len = len(self.shapes[key])-1
                 if not (len(matrices[key].shape) == potential_shape_len and matrices[key].shape == self.shapes[key][:potential_shape_len]):
@@ -151,6 +152,19 @@ class KalmanFilter:
                 raise ValueError(f'{key} matrix is not the correct shape, expected {self.shapes[key]}, but got {matrices[key].shape}')
             
             setattr(self, "_" + key, matrices[key])
+
+
+    def setInit(self, matrices, diffuse=False):
+        self.diffuse=diffuse
+
+        for key in matrices:
+            if not key in self.SSM_INIT_NAMES:
+                raise NameError(f'{key} is not a valid key')
+            if matrices[key].shape != self.shapes[key]:
+                raise ValueError(f'{key} matrix is not the correct shape, expected {self.shapes[key]}, but got {matrices[key].shape}')
+            
+            setattr(self, "_" + key, matrices[key])
+
             
         
 
@@ -166,7 +180,7 @@ class KalmanFilter:
     
 
     
-    def loglikeobs(self):
+    def loglikeobs(self, fit=False):
         """
         Calculates the loglikelihood at each observation
         """
@@ -179,14 +193,20 @@ class KalmanFilter:
         for i in range(len(self.endog)):
             
             # Prediction
-            obs = self.endog[i]
+            obs = self.endog[:, i]
             try:
                 if self.time_invariant:
-                    F = cov + self._Q
-                    K = cov + np.linalg.inv(F) # TODO CHECK
-
                     estim_error = obs - self._Z@state - self._d
-                    pred_state = state + self._F@self._P.T@np.linalg.inv(self._F)@estim_error
+                    cov_error = self._Z@self._P@self._Z.T + self._H
+                    gain = cov@self._Z.T@np.linalg.inv(cov_error)
+
+                    state = self._T@(state + gain@estim_error) + self._c
+                    
+                    #Joseph form
+                    post_cov = (np.eye(self.k_states)-gain@self._Z)@cov@(np.eye(self.k_states)-gain@self._Z).T + gain@self._H@gain.T
+                    post_cov = 0.5 * (post_cov + post_cov.T)
+
+                    cov = self._T@post_cov@self._T.T + self._R@self._Q@self._R.T
 
                 else:
                     pass
@@ -194,14 +214,14 @@ class KalmanFilter:
 
 
 
-            except NameError as n:
-                print(f"SSM must be fully specified prior to fitting\n{n}")
-                raise n
+            except AttributeError as a:
+                raise KalmanFilter.StateNotSetError(f"SSM matrices must be set prior to fitting: {str(a)}")
+            
             except Exception as e:
                 raise e
 
 
-            if i == 0:
+            if i == 0 and self.diffuse:
                 loglike = 0.0
             else:
                 loglike = 0.0#TODO Implement 
@@ -236,7 +256,13 @@ class Results:
         Predicts endog from start to end
         """
         pass
+    
+    def forecast(self, nsteps):
+        start = len(self.filter.endog)
+        return self.predict(start, start + nsteps - 1)
+    
 
+    
     @property
     @abstractmethod
     def params(self):

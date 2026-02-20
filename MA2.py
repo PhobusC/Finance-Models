@@ -5,31 +5,35 @@ from MA import MA
 
 class MA2(MLEModel):
     def __init__(self, endog, q=0):
-        super().__init__(endog, k_states=q+1, k_posdef=1)
+        super().__init__(endog, k_states=q+1, k_posdef=None) # TODO change k_posdef
         self.q = q
         self._init_Repr()
 
     def _init_Repr(self):
         ssm = {}
+        """ Not necessary since we init this in _init_params
         ssm["Z"] = np.zeros((1, self.filter.k_states))
         ssm["Z"][0, 0] = np.mean(self.endog)
-
+        """
+        #TODO redo the initialization, this ssm is broken
         ssm["T"] = np.zeros((self.filter.k_states, self.filter.k_states))
         ssm["T"][0, 0] = 1
         for i in range(1, self.q):
             ssm["T"][i+1, i] = 1
 
-        ssm["d"] = np.zeros((1))
-        ssm["c"] = np.zeros((self.filter.k_states))
+        ssm["d"] = np.zeros((1, 1))
+        ssm["c"] = np.zeros((self.filter.k_states, 1))
 
-        ssm["R"] = np.zeros((self.filter.k_states, self.filter.k_posdef))
+        ssm["R"] = np.zeros((self.filter.k_states, self.filter.k_states))
         ssm["R"][1, 0] = 1
+
+        ssm['H'] = np.zeros((1, 1))
 
         initial_state = np.zeros((self.filter.k_states, 1))
         initial_state[0, 0] = 1
         ssm['init_state'] = initial_state
 
-        initial_cov = 1e6 * np.eye(self.filter.k_posdef)
+        initial_cov = 1e6 * np.eye(self.filter.k_states)
         ssm['init_cov'] = initial_cov
 
         self.filter.setRepr(ssm)
@@ -48,7 +52,7 @@ class MA2(MLEModel):
         print(params)
         weights = np.concatenate((np.array([1]), params[:-1]))
         weights = weights[None, :]
-        var = np.exp(params[-1]) * np.eye(self.filter.k_posdef)
+        var = np.exp(params[-1]) * np.eye(self.filter.k_states)
 
         self.filter.setRepr({'Z': weights, 'Q': var})
 
@@ -56,7 +60,7 @@ class MA2(MLEModel):
         
 data = pd.read_csv('daily_IBM.csv')
 data_prices = np.array(data[['close']]).T
-print(data_prices[:, :5])
+print(data_prices.shape)
 model = MA2(data_prices, 2)
 test_model = MA(data_prices, 2)
 result = model.fit()
