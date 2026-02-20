@@ -48,7 +48,7 @@ class MLEModel:
         if not results.success:
             print(f'Optimization failed: {results.message}')
 
-
+        # Handle failed optimization?
         self.change_spec(results.x)
         return Results(self.filter)
     
@@ -189,74 +189,7 @@ class KalmanFilter:
         Calculates the loglikelihood at each observation
         """
 
-        state = self._init_state
-        cov = self._init_cov
-        
-        loglikeobs = []
-        for i in range(len(self.endog)):
-            
-            # Prediction
-            obs = self.endog[:, i]
-            m = {} # Stores the ssm matrices for each time step
-            if self.time_invariant:
-                for key in self.SSM_REPR_NAMES:
-                    m[key] = getattr(self, "_" + key)
-            try:
-                if not self.time_invariant:
-                    for key in self.SSM_REPR_NAMES:
-                        m[key] = getattr(self, "_" + key)[:, :, i]
-
-
-                # Filters using estimation errors
-                estim_error = obs - m['Z']@state - m['d']
-                cov_error = m['Z']@cov@m['Z'].T + m['H']
-                cov_error = 0.5 * (cov_error + cov_error.T)  # Enforce symmetry
-
-                lower, d, perm = ldl(cov_error, lower=True)  # LDL form of F
-
-                # Calculate gain with LDL
-                PZt = cov@m['Z'].T
-                W = solve_triangular(lower[perm], PZt.T, lower=True)
-                U = np.array([W[j]/d[j, j] for j in range(self.k_endog)])
-                gain = solve_triangular(lower[perm].T, U, lower=False).T
-
-                #gain = cov@self._Z.T@np.linalg.inv(cov_error)
-
-                state = m['T']@(state + gain@estim_error) + m['c']
-                
-                #Joseph form
-                post_cov = (np.eye(self.k_states)-gain@m['Z'])@cov@(np.eye(self.k_states)-gain@m['Z']).T + gain@m['H']@gain.T
-                post_cov = 0.5 * (post_cov + post_cov.T)  # Enforce symmetry
-
-                cov = m['T']@post_cov@m['T'].T + m['R']@m['Q']@m['R'].T
-                    
-
-            except AttributeError as a:
-                raise KalmanFilter.StateNotSetError(f"SSM matrices must be set prior to fitting: {str(a)}")
-            
-            except Exception as e:
-                raise e
-
-
-            if i == 0 and self.diffuse:
-                loglike = 0.0
-            else:
-                cov_error_size = 1
-                for i in range(d.shape[0]): # is there a prettier way to do this?
-                    cov_error_size *= d[i, i]
-                
-                # Solve for quadratic term
-                z = solve_triangular(lower[perm], estim_error, lower=True)
-                quad = np.sum(z.dot(np.array([z[j]/d[j, j] for j in range(d.shape[0])])))
-
-                loglike = -0.5*(np.log(cov_error_size) + quad)
-                if not fit:
-                    loglike += -0.5*self.k_endog*math.log(math.pi * 2)
-            
-            loglikeobs.append(loglike)
-        
-        
-        return np.array(loglikeobs)
+        return np.array(self.filter(returns=['loglike'], fit=fit)['loglike'])
 
 
     # TODO consider adding a one pass filter method that adds useful stats as attributes
@@ -277,14 +210,13 @@ class KalmanFilter:
         state = self._init_state
         cov = self._init_cov
         
+        m = {} # Stores the ssm matrices for each time step
+        if self.time_invariant:
+            for key in self.SSM_REPR_NAMES:
+                m[key] = getattr(self, "_" + key)
+
         for t in range(len(self.endog)):
-            
-            # Prediction
             obs = self.endog[:, t]
-            m = {} # Stores the ssm matrices for each time step
-            if self.time_invariant:
-                for key in self.SSM_REPR_NAMES:
-                    m[key] = getattr(self, "_" + key)
             try:
                 if not self.time_invariant:
                     for key in self.SSM_REPR_NAMES:
