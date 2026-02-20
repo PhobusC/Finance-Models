@@ -1,4 +1,5 @@
 import numpy as np
+import math
 from scipy.optimize import minimize
 from scipy.linalg import ldl, solve_triangular
 from abc import abstractmethod
@@ -113,6 +114,8 @@ class KalmanFilter:
         self.diffuse=False
 
         k_endog = self.endog.shape[0]
+        self.k_endog = k_endog
+        
         nobs = self.endog.shape[1]
         if k_posdef is None:
             k_posdef = k_states
@@ -199,15 +202,15 @@ class KalmanFilter:
             try:
                 if self.time_invariant:
                     estim_error = obs - self._Z@state - self._d
-                    cov_error = self._Z@self._P@self._Z.T + self._H
+                    cov_error = self._Z@cov@self._Z.T + self._H
                     cov_error = 0.5 * (cov_error + cov_error.T)  # Enforce symmetry
 
                     lower, d, perm = ldl(cov_error, lower=True)  # LDL form of F
 
                     # Calculate gain with LDL TODO CHECK THIS AGAIN
-                    PZt = state@self._Z.T
+                    PZt = cov@self._Z.T
                     W = solve_triangular(lower[perm], PZt.T, lower=True)
-                    U = np.array([W[i]/d[i, i] for i in range(W.shape[0])])
+                    U = np.array([W[i]/d[j, j] for j in range(self.k_endog)])
                     gain = solve_triangular(lower[perm].T, U, lower=False).T
 
                     #gain = cov@self._Z.T@np.linalg.inv(cov_error)
@@ -224,8 +227,6 @@ class KalmanFilter:
                     pass
                     
 
-
-
             except AttributeError as a:
                 raise KalmanFilter.StateNotSetError(f"SSM matrices must be set prior to fitting: {str(a)}")
             
@@ -236,7 +237,17 @@ class KalmanFilter:
             if i == 0 and self.diffuse:
                 loglike = 0.0
             else:
-                loglike = 0.0#TODO Implement 
+                cov_error_size = 1
+                for i in range(d.shape[0]): # is there a prettier way to do this?
+                    cov_error_size *= d[i, i]
+                
+                # Solve for quadratic term
+                z = solve_triangular(lower[perm], estim_error, lower=True)
+                quad = np.sum(z.dot(np.array([z[j]/d[j, j] for j in range(d.shape[0])])))
+
+                loglike = -0.5*(np.log(cov_error_size) + quad)
+                if not fit:
+                    loglike += -0.5*self.k_endog*math.log(math.pi * 2)
             
             loglikeobs.append(loglike)
         
