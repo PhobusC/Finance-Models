@@ -115,7 +115,7 @@ class KalmanFilter:
 
         k_endog = self.endog.shape[0]
         self.k_endog = k_endog
-        
+
         nobs = self.endog.shape[1]
         if k_posdef is None:
             k_posdef = k_states
@@ -183,14 +183,11 @@ class KalmanFilter:
     def nloglike(self):
         return -1 * self.loglike()
     
-
-    
     def loglikeobs(self, fit=False):
         """
         Calculates the loglikelihood at each observation
         """
-        # TODO implement check that ssm has been initialized
-        
+
         state = self._init_state
         cov = self._init_cov
         
@@ -199,32 +196,38 @@ class KalmanFilter:
             
             # Prediction
             obs = self.endog[:, i]
+            m = {} # Stores the ssm matrices for each time step
+            if self.time_invariant:
+                for key in self.SSM_REPR_NAMES:
+                    m[key] = getattr(self, "_" + key)
             try:
-                if self.time_invariant:
-                    estim_error = obs - self._Z@state - self._d
-                    cov_error = self._Z@cov@self._Z.T + self._H
-                    cov_error = 0.5 * (cov_error + cov_error.T)  # Enforce symmetry
+                if not self.time_invariant:
+                    for key in self.SSM_REPR_NAMES:
+                        m[key] = getattr(self, "_" + key)[:, :, i]
 
-                    lower, d, perm = ldl(cov_error, lower=True)  # LDL form of F
 
-                    # Calculate gain with LDL TODO CHECK THIS AGAIN
-                    PZt = cov@self._Z.T
-                    W = solve_triangular(lower[perm], PZt.T, lower=True)
-                    U = np.array([W[i]/d[j, j] for j in range(self.k_endog)])
-                    gain = solve_triangular(lower[perm].T, U, lower=False).T
+                # Filters using estimation errors
+                estim_error = obs - m['Z']@state - m['d']
+                cov_error = m['Z']@cov@m['Z'].T + m['H']
+                cov_error = 0.5 * (cov_error + cov_error.T)  # Enforce symmetry
 
-                    #gain = cov@self._Z.T@np.linalg.inv(cov_error)
+                lower, d, perm = ldl(cov_error, lower=True)  # LDL form of F
 
-                    state = self._T@(state + gain@estim_error) + self._c
-                    
-                    #Joseph form
-                    post_cov = (np.eye(self.k_states)-gain@self._Z)@cov@(np.eye(self.k_states)-gain@self._Z).T + gain@self._H@gain.T
-                    post_cov = 0.5 * (post_cov + post_cov.T)  # Enforce symmetry
+                # Calculate gain with LDL
+                PZt = cov@m['Z'].T
+                W = solve_triangular(lower[perm], PZt.T, lower=True)
+                U = np.array([W[i]/d[j, j] for j in range(self.k_endog)])
+                gain = solve_triangular(lower[perm].T, U, lower=False).T
 
-                    cov = self._T@post_cov@self._T.T + self._R@self._Q@self._R.T
+                #gain = cov@self._Z.T@np.linalg.inv(cov_error)
 
-                else:
-                    pass
+                state = m['T']@(state + gain@estim_error) + m['c']
+                
+                #Joseph form
+                post_cov = (np.eye(self.k_states)-gain@m['Z'])@cov@(np.eye(self.k_states)-gain@m['Z']).T + gain@m['H']@gain.T
+                post_cov = 0.5 * (post_cov + post_cov.T)  # Enforce symmetry
+
+                cov = m['T']@post_cov@m['T'].T + m['R']@m['Q']@m['R'].T
                     
 
             except AttributeError as a:
