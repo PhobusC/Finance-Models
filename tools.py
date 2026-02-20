@@ -103,7 +103,7 @@ class KalmanFilter:
 
     SSM_REPR_NAMES = ['Z', 'T', 'd', 'c', 'R', 'H', 'Q']
     SSM_INIT_NAMES = ['init_state', 'init_cov']
-    FILTER_TRACK = ['loglike', 'state', 'cov'] # check if errors should be tracked
+    FILTER_TRACK = ['loglike', 'state', 'cov', 'innov', 'innov_var', 'gain'] # check if errors should be tracked
 
 
     def __init__(self, endog, k_states, exog=None, k_posdef=None, time_invariant=True):
@@ -224,11 +224,11 @@ class KalmanFilter:
 
 
                 # Filters using estimation errors
-                estim_error = obs - m['Z']@state - m['d']
-                cov_error = m['Z']@cov@m['Z'].T + m['H']
-                cov_error = 0.5 * (cov_error + cov_error.T)  # Enforce symmetry
+                innov = obs - m['Z']@state - m['d']
+                innov_var = m['Z']@cov@m['Z'].T + m['H']
+                innov_var = 0.5 * (innov_var + innov_var.T)  # Enforce symmetry
 
-                lower, d, perm = ldl(cov_error, lower=True)  # LDL form of F
+                lower, d, perm = ldl(innov_var, lower=True)  # LDL form of F
 
                 # Calculate gain with LDL
                 PZt = cov@m['Z'].T
@@ -236,9 +236,9 @@ class KalmanFilter:
                 U = np.array([W[j]/d[j, j] for j in range(self.k_endog)])
                 gain = solve_triangular(lower[perm].T, U, lower=False).T
 
-                #gain = cov@self._Z.T@np.linalg.inv(cov_error)
+                #gain = cov@self._Z.T@np.linalg.inv(innov_var)
 
-                state = m['T']@(state + gain@estim_error) + m['c']
+                state = m['T']@(state + gain@innov) + m['c']
                 
                 #Joseph form
                 post_cov = (np.eye(self.k_states)-gain@m['Z'])@cov@(np.eye(self.k_states)-gain@m['Z']).T + gain@m['H']@gain.T
@@ -256,27 +256,25 @@ class KalmanFilter:
 
             if returns is not None:
                 for r in returns:
-                    if r == 'state':
-                        stats[r].append(state)
-                    elif r == 'cov':
-                        stats[r].append(cov)
-                    elif r == 'loglike':
+                    if r == 'loglike':
                         if t == 0 and self.diffuse:
                             loglike = 0.0
                         else:
-                            cov_error_size = 1
+                            innov_var_size = 1
                             for i in range(d.shape[0]): # is there a prettier way to do this?
-                                cov_error_size *= d[i, i]
+                                innov_var_size *= d[i, i]
                             
                             # Solve for quadratic term
-                            z = solve_triangular(lower[perm], estim_error, lower=True)
+                            z = solve_triangular(lower[perm], innov, lower=True)
                             quad = np.sum(z.dot(np.array([z[j]/d[j, j] for j in range(d.shape[0])])))
 
-                            loglike = -0.5*(np.log(cov_error_size) + quad)
+                            loglike = -0.5*(np.log(innov_var_size) + quad)
                             if not fit:
                                 loglike += -0.5*self.k_endog*math.log(math.pi * 2)
                         
-                        stats[r].append(loglike)
+                        stats[r].append(loglike)  
+                    else: 
+                        stats[r].append(locals()[r])
         
         return stats
     
