@@ -277,6 +277,8 @@ class KalmanFilter:
 
                     cov = m['T']@post_cov@m['T'].T + m['R']@m['Q']@m['R'].T
 
+                    
+
                 
                 else:
                     pred = m['Z']@state + m['d']
@@ -286,7 +288,8 @@ class KalmanFilter:
                     innov_var = None
                     gain = None
  
-                    
+            
+
 
             except AttributeError as a:
                 raise KalmanFilter.StateNotSetError(f"SSM matrices must be set prior to fitting: {str(a)}")
@@ -314,7 +317,17 @@ class KalmanFilter:
                                 loglike += -0.5*elem*math.log(math.pi * 2)
                         
                         stats[r].append(loglike)
+                    elif r == 'obs':
+                        # Changes shape of pred back if needed
+                        if obs is not None and elem < self.k_endog:
+                            pred_full = np.full((self.k_endog, 1), np.nan)
+                            pred_full[empty] = pred
+                            pred = pred_full
+                        
+                        stats[r].append(pred)
+
                     else: 
+                        # Add thing that expands pred back to original shape if masked
                         stats[r].append(locals()[r] if locals()[r] is not None else np.nan) # Is this a good way of doing this?
         
         return stats
