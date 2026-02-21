@@ -200,7 +200,7 @@ class KalmanFilter:
         Goes from start (inclusive) to stop (exclusive)
         """
         if stop is None:
-            stop = self.k_endog
+            stop = self.endog.shape[1]
 
 
         # Checks for start and stop here
@@ -224,7 +224,7 @@ class KalmanFilter:
             for key in self.SSM_REPR_NAMES:
                 m[key] = getattr(self, "_" + key)
 
-        for t in range(stop):
+        for t in range(start, stop):
             try:
 
                 if t < self.endog.shape[1]:
@@ -239,24 +239,30 @@ class KalmanFilter:
                 if obs is not None:
                     if np.isnan(obs).any():
                         empty = ~np.isnan(obs).squeeze() # Should be shape (k_endog,)
-                        Z = m['Z']
-                        H = m['H']
+                        obs_masked = obs[empty]
+                        Z_masked = m['Z'][empty, :]
+                        d_masked = m['d'][empty]
+                        H_masked = m['H'][np.ix_(empty, empty)]
+                        elem = np.sum(empty)
 
-                        obs = obs[empty]
-                        m['Z'] = Z[empty]
-                        m['H'] = H[np.ix_(empty, empty)]
+                    else:
+                        obs_masked = obs
+                        Z_masked = m['Z']
+                        H_masked = m['H']
+                        d_masked = m['d']
+                        elem = self.k_endog
                     
 
                     # Filters using estimation errors
-                    pred = m['Z']@state + m['d']
-                    innov = obs - pred
-                    innov_var = m['Z']@cov@m['Z'].T + m['H']
+                    pred = Z_masked@state + d_masked # d is the wrong shape if missing obs
+                    innov = obs_masked - pred
+                    innov_var = Z_masked@cov@Z_masked.T + H_masked
                     innov_var = 0.5 * (innov_var + innov_var.T)  # Enforce symmetry
 
                     lower, d, perm = ldl(innov_var, lower=True)  # LDL form of F
 
                     # Calculate gain with LDL
-                    PZt = cov@m['Z'].T
+                    PZt = cov@Z_masked.T
                     W = solve_triangular(lower[perm], PZt.T, lower=True)
                     U = np.array([W[j]/d[j, j] for j in range(d.shape[0])])
                     gain = solve_triangular(lower[perm].T, U, lower=False).T
@@ -266,7 +272,7 @@ class KalmanFilter:
                     state = m['T']@(state + gain@innov) + m['c']
                     
                     #Joseph form
-                    post_cov = (np.eye(self.k_states)-gain@m['Z'])@cov@(np.eye(self.k_states)-gain@m['Z']).T + gain@m['H']@gain.T
+                    post_cov = (np.eye(self.k_states)-gain@Z_masked)@cov@(np.eye(self.k_states)-gain@Z_masked).T + gain@H_masked@gain.T
                     post_cov = 0.5 * (post_cov + post_cov.T)  # Enforce symmetry
 
                     cov = m['T']@post_cov@m['T'].T + m['R']@m['Q']@m['R'].T
@@ -305,7 +311,7 @@ class KalmanFilter:
 
                             loglike = -0.5*(np.log(innov_var_size) + quad)
                             if not fit:
-                                loglike += -0.5*self.k_endog*math.log(math.pi * 2)
+                                loglike += -0.5*elem*math.log(math.pi * 2)
                         
                         stats[r].append(loglike)
                     else: 

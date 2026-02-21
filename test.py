@@ -21,7 +21,7 @@ print(l[perm])
 
 print(l@d@l.T)
 """
-
+"""
 data = pd.read_csv("Nile.csv")
 data = data.set_index('time')
 data = data['Nile']
@@ -32,3 +32,9 @@ print(data.isna().sum())
 
 
 print(np.concat((np.empty(0), np.array([1, 2, 3]))))
+"""
+
+
+y = np.array([True, True, False, False, False, True])
+print(np.sum(y))
+
