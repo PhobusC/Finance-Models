@@ -193,17 +193,25 @@ class KalmanFilter:
 
 
     # TODO consider adding a one pass filter method that adds useful stats as attributes
-    def filter(self, returns=FILTER_TRACK, fit=False):
+    def filter(self, start=0, stop=None, returns=FILTER_TRACK, fit=False):
         """
         Returns should be a list of possible things to track, as specificed by FILTER_TRACK
         Fit should only be used through loglikeobs and fit_func
         """
+        if stop is None:
+            stop = self.k_endog
+
+
+        # Checks for start and stop here
+
+
+
         stats=None
         if returns is not None:
             stats = {}
             for r in returns:
                 if r in self.FILTER_TRACK:
-                    stats[r] = []
+                    stats[r] = np.empty(0)
                 else:
                     raise NameError(f'{r} is not a valid return')
 
@@ -216,11 +224,25 @@ class KalmanFilter:
                 m[key] = getattr(self, "_" + key)
 
         for t in range(len(self.endog)):
-            obs = self.endog[:, t]
+            
             try:
-                if not self.time_invariant:
-                    for key in self.SSM_REPR_NAMES:
-                        m[key] = getattr(self, "_" + key)[:, :, t]
+
+                if t < self.endog:
+                    obs = self.endog[:, t]
+                    if not self.time_invariant:
+                        for key in self.SSM_REPR_NAMES:
+                            m[key] = getattr(self, "_" + key)[:, :, t]
+                else:
+                    pass
+
+                
+                if np.isnan(obs).any():
+                    empty = np.isnan(obs) # Should be shape (k_endog, 1)
+
+                
+
+
+                
 
 
                 # Filters using estimation errors
@@ -272,9 +294,9 @@ class KalmanFilter:
                             if not fit:
                                 loglike += -0.5*self.k_endog*math.log(math.pi * 2)
                         
-                        stats[r].append(loglike)  
+                        np.append(stats[r], loglike)
                     else: 
-                        stats[r].append(locals()[r])
+                        np.append(stats[r], locals()[r])
         
         return stats
     
