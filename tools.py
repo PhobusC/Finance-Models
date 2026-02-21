@@ -103,7 +103,7 @@ class KalmanFilter:
 
     SSM_REPR_NAMES = ['Z', 'T', 'd', 'c', 'R', 'H', 'Q']
     SSM_INIT_NAMES = ['init_state', 'init_cov']
-    FILTER_TRACK = ['loglike', 'state', 'cov', 'innov', 'innov_var', 'gain'] # check if errors should be tracked
+    FILTER_TRACK = ['loglike', 'pred', 'state', 'cov', 'innov', 'innov_var', 'gain'] # check if errors should be tracked
 
 
     def __init__(self, endog, k_states, exog=None, k_posdef=None, time_invariant=True):
@@ -193,10 +193,11 @@ class KalmanFilter:
 
 
     # TODO consider adding a one pass filter method that adds useful stats as attributes
-    def filter(self, start=0, stop=None, returns=FILTER_TRACK, fit=False):
+    def filter(self, start=0, stop=None, returns=['loglike', 'state', 'cov', 'innov', 'innov_var', 'gain'], fit=False):
         """
         Returns should be a list of possible things to track, as specificed by FILTER_TRACK
         Fit should only be used through loglikeobs and fit_func
+        Goes from start (inclusive) to stop (exclusive)
         """
         if stop is None:
             stop = self.k_endog
@@ -211,7 +212,7 @@ class KalmanFilter:
             stats = {}
             for r in returns:
                 if r in self.FILTER_TRACK:
-                    stats[r] = np.empty(0)
+                    stats[r] = []
                 else:
                     raise NameError(f'{r} is not a valid return')
 
@@ -223,50 +224,62 @@ class KalmanFilter:
             for key in self.SSM_REPR_NAMES:
                 m[key] = getattr(self, "_" + key)
 
-        for t in range(len(self.endog)):
-            
+        for t in range(stop):
             try:
 
-                if t < self.endog:
+                if t < self.endog.shape[1]:
                     obs = self.endog[:, t]
                     if not self.time_invariant:
                         for key in self.SSM_REPR_NAMES:
                             m[key] = getattr(self, "_" + key)[:, :, t]
                 else:
-                    pass
+                    obs = None
 
                 
-                if np.isnan(obs).any():
-                    empty = np.isnan(obs) # Should be shape (k_endog, 1)
+                if obs is not None:
+                    if np.isnan(obs).any():
+                        empty = ~np.isnan(obs).squeeze() # Should be shape (k_endog,)
+                        Z = m['Z']
+                        H = m['H']
+
+                        obs = obs[empty]
+                        m['Z'] = Z[empty]
+                        m['H'] = H[np.ix_(empty, empty)]
+                    
+
+                    # Filters using estimation errors
+                    pred = m['Z']@state + m['d']
+                    innov = obs - pred
+                    innov_var = m['Z']@cov@m['Z'].T + m['H']
+                    innov_var = 0.5 * (innov_var + innov_var.T)  # Enforce symmetry
+
+                    lower, d, perm = ldl(innov_var, lower=True)  # LDL form of F
+
+                    # Calculate gain with LDL
+                    PZt = cov@m['Z'].T
+                    W = solve_triangular(lower[perm], PZt.T, lower=True)
+                    U = np.array([W[j]/d[j, j] for j in range(d.shape[0])])
+                    gain = solve_triangular(lower[perm].T, U, lower=False).T
+
+                    #gain = cov@self._Z.T@np.linalg.inv(innov_var)
+
+                    state = m['T']@(state + gain@innov) + m['c']
+                    
+                    #Joseph form
+                    post_cov = (np.eye(self.k_states)-gain@m['Z'])@cov@(np.eye(self.k_states)-gain@m['Z']).T + gain@m['H']@gain.T
+                    post_cov = 0.5 * (post_cov + post_cov.T)  # Enforce symmetry
+
+                    cov = m['T']@post_cov@m['T'].T + m['R']@m['Q']@m['R'].T
 
                 
-
-
-                
-
-
-                # Filters using estimation errors
-                innov = obs - m['Z']@state - m['d']
-                innov_var = m['Z']@cov@m['Z'].T + m['H']
-                innov_var = 0.5 * (innov_var + innov_var.T)  # Enforce symmetry
-
-                lower, d, perm = ldl(innov_var, lower=True)  # LDL form of F
-
-                # Calculate gain with LDL
-                PZt = cov@m['Z'].T
-                W = solve_triangular(lower[perm], PZt.T, lower=True)
-                U = np.array([W[j]/d[j, j] for j in range(self.k_endog)])
-                gain = solve_triangular(lower[perm].T, U, lower=False).T
-
-                #gain = cov@self._Z.T@np.linalg.inv(innov_var)
-
-                state = m['T']@(state + gain@innov) + m['c']
-                
-                #Joseph form
-                post_cov = (np.eye(self.k_states)-gain@m['Z'])@cov@(np.eye(self.k_states)-gain@m['Z']).T + gain@m['H']@gain.T
-                post_cov = 0.5 * (post_cov + post_cov.T)  # Enforce symmetry
-
-                cov = m['T']@post_cov@m['T'].T + m['R']@m['Q']@m['R'].T
+                else:
+                    pred = m['Z']@state + m['d']
+                    state = m['T']@state + m['c']
+                    cov = m['T']@cov@m['T'].T + m['R']@m['Q']@m['R'].T
+                    innov = None
+                    innov_var = None
+                    gain = None
+ 
                     
 
             except AttributeError as a:
@@ -279,7 +292,7 @@ class KalmanFilter:
             if returns is not None:
                 for r in returns:
                     if r == 'loglike':
-                        if t == 0 and self.diffuse:
+                        if (t == 0 and self.diffuse) or obs is None:
                             loglike = 0.0
                         else:
                             innov_var_size = 1
@@ -294,13 +307,13 @@ class KalmanFilter:
                             if not fit:
                                 loglike += -0.5*self.k_endog*math.log(math.pi * 2)
                         
-                        np.append(stats[r], loglike)
+                        stats[r].append(loglike)
                     else: 
-                        np.append(stats[r], locals()[r])
+                        stats[r].append(locals()[r] if locals()[r] is not None else np.nan) # Is this a good way of doing this?
         
         return stats
     
-
+    
 
 
 
@@ -314,8 +327,9 @@ class KalmanFilter:
 
 
 class Results:
-    def __init__(self, filter):
-        self.filter = filter
+    def __init__(self, model):
+        self.model = model
+        self.stats = self.model.filter.filter()
 
     def predict(self, start, end):
         """
