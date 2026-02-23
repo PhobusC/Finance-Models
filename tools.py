@@ -49,10 +49,12 @@ def adfTest(series, criterion="aic", model=1, conf_level=0.05):
         raise ValueError("Param model should be from values [1, 2, 3]")
     
     # Matrices for OLS
+    # Matrices are in ascending order
     p_max = math.floor(12 * math.pow(len(series)/10, 0.25))
     for p in range(1, p_max+1):
-        if model == 1:
-            X = np.empty(shape=(diff_len-p, p+1), d_type=float)
+        if model == 1: # no constant no drift
+            
+            X = np.empty(shape=(diff_len-p, p+1), dtype=float)
             X[:, 0] = series[p:-1]
             for i in range(1, p+1):
                 X[:, i] = diff_series[p-i: diff_len-i]
@@ -60,12 +62,24 @@ def adfTest(series, criterion="aic", model=1, conf_level=0.05):
             Y = diff_series[p:]
 
 
-        elif model == 2:
-            pass
+        elif model == 2: # constant only
+            X = np.empty(shape=(diff_len-p, p+2), dtype=float)
+            X[:, 0] = np.ones(shape=(diff_len-p))
+            X[:, 1] = series[p:-1]
+            for i in range(1, p+1):
+                X[:, i+1] = diff_series[p-i: diff_len-i]
+            
+            Y = diff_series[p:]
 
         elif model == 3:
-            pass
+            X = np.empty(shape=(diff_len-p, p+3))
+            X[:, 0] = np.ones(shape=(diff_len-p))
+            X[:, 1] = np.arange(start=p+2, stop=diff_len+2)
+            X[:, 2] = series[p:-1]
+            for i in range(1, p+1):
+                X[:, i+2] = diff_series[p-i: diff_len-i]
 
+            Y = diff_series[p:]
 
 
 

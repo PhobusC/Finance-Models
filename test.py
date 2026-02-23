@@ -5,11 +5,13 @@ import pandas as pd
 from tools import adfTest
 
 
-y = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+y = np.random.random((50))
+print(len(y))
+print(y)
+print("\n" * 3)
+print(np.diff(y))
+print("\n" * 3)
 
-max_lag=4
-lag = 2
-print(y[-(lag+1):-(11-max_lag+lag)])
+adfTest(y, model=3)
 
-for i in range(max_lag+1):
-    print(y[max_lag-i: 10-i])
+#print(np.arange(start=2, stop=11))
