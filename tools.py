@@ -6,18 +6,75 @@ from abc import abstractmethod
 from functools import partial
 
 
+def ols(Y, X):
+    """
+    Returns Beta hat matrix under OLS assumptions
+    Y is data
+    X is regressors
+    """
+
+    return np.linalg.inv(X.T@X)@X.T@Y
 
 
-def adfTest(series):
+def adfTest(series, criterion="aic", model=1, conf_level=0.05):
     """
     Tests for stationarity/unit root in time series
     Creates an autoregressive model of lag p (chosen through information criterion) of form:
     Δyt = α + βt + γyt-1 + δ1Δyt-1 + ... + δpΔyt-p + εt
     
     :param series: Arraylike of the series to test for stationarity
+
+    param model: int signifying which regression to fit
+        model = 1: no constant, no drift
+                2: constant only
+                3: constant and drift
     """
+
+    series = series.squeeze()
+
+    if len(series.shape) >= 2:
+        raise ValueError("Series should be 1D")
+
+    # Fit OLS model to differenced series, using information criterion
+    # Best_model is a tuple, (max lag, criterion scpre)
+
+    # Schwert/Ng-Perron rule?
+    diff_series = np.diff(series)
+    diff_len = len(diff_series)
+    best_model = None
+
     
 
+    if model not in [1, 2, 3]:
+        raise ValueError("Param model should be from values [1, 2, 3]")
+    
+    # Matrices for OLS
+    p_max = math.floor(12 * math.pow(len(series)/10, 0.25))
+    for p in range(1, p_max+1):
+        if model == 1:
+            X = np.empty(shape=(diff_len-p, p+1), d_type=float)
+            X[:, 0] = series[p:-1]
+            for i in range(1, p+1):
+                X[:, i] = diff_series[p-i: diff_len-i]
+
+            Y = diff_series[p:]
+
+
+        elif model == 2:
+            pass
+
+        elif model == 3:
+            pass
+
+
+
+
+    return best_model
+
+def adfTable():
+    """
+    I might try to calculate the values to practice Monte Carlo Simulation
+    """
 
 def aic(llk, nmodel_params) -> float:
     """
@@ -52,8 +109,6 @@ class MLEModel:
         self.change_spec(results.x)
         return Results(self.filter)
     
-    
-    
     def fit_func(self, params, func=None):
         """
         Sets model parameters according to change_spec, then calculates the score according to t
@@ -67,7 +122,6 @@ class MLEModel:
             obj_func = partial(self.filter.nloglike, fit=True)
         
         return obj_func()
-    
 
     @abstractmethod
     def _init_params(self):
@@ -80,9 +134,6 @@ class MLEModel:
     @abstractmethod
     def change_spec(self, params):
         pass
-
-
-    
 
 
 class KalmanFilter:
@@ -136,15 +187,12 @@ class KalmanFilter:
             'init_state': (k_states, 1),
             'init_cov': (k_states, k_states)#(k_posdef, k_posdef)
         }
-
-    
     
     def setRepr(self, matrices):
         """
         Updates the transition matrices
         ssm should be a dictionary according to the statsmodel naming keys
         """
-        
         
         for key in matrices:
             if not key in self.SSM_REPR_NAMES:
@@ -171,9 +219,6 @@ class KalmanFilter:
             
             setattr(self, "_" + key, matrices[key])
 
-            
-        
-
     def loglike(self):
         """
         Calculates loglike for the given state-space model
@@ -190,24 +235,25 @@ class KalmanFilter:
         """
 
         return np.array(self.filter(returns=['loglike'], fit=fit)['loglike'])
-
-
-    # TODO consider adding a one pass filter method that adds useful stats as attributes
+    
     def filter(self, start=0, stop=None, returns=['loglike', 'state', 'cov', 'innov', 'innov_var', 'gain'], fit=False):
         """
         Returns should be a list of possible things to track, as specificed by FILTER_TRACK
         Fit should only be used through loglikeobs and fit_func
-        Goes from start (inclusive) to stop (exclusive)
+        Goes from start (inclusive) to stop (inclusive)
         """
         if stop is None:
-            stop = self.endog.shape[1]
+            stop = self.endog.shape[1] - 1
 
 
         # Checks for start and stop here
+        if start < 0 or start > self.endog.shape[1]:
+            raise ValueError("Start must be at least 0 and at most nobs")
+        if stop < start:
+            raise ValueError("Start must be less than stop")
+        
 
 
-
-        stats=None
         if returns is not None:
             stats = {}
             for r in returns:
@@ -224,7 +270,7 @@ class KalmanFilter:
             for key in self.SSM_REPR_NAMES:
                 m[key] = getattr(self, "_" + key)
 
-        for t in range(start, stop):
+        for t in range(start, stop + 1):
             try:
 
                 if t < self.endog.shape[1]:
@@ -331,10 +377,6 @@ class KalmanFilter:
                         stats[r].append(locals()[r] if locals()[r] is not None else np.nan) # Is this a good way of doing this?
         
         return stats
-    
-    
-
-
 
     class StateNotSetError(Exception):
         def __init__(self, message="SSM matrices must be set prior to fitting"):
@@ -354,7 +396,8 @@ class Results:
         """
         Predicts endog from start to end
         """
-        pass
+        obs = self.model.filter.filter(start=start, stop=end, returns=['pred'])
+        return obs
     
     def forecast(self, nsteps):
         start = len(self.filter.endog)

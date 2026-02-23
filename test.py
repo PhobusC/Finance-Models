@@ -2,39 +2,14 @@ import numpy as np
 from statsmodels.tsa.statespace.mlemodel import MLEModel
 from scipy.linalg import ldl
 import pandas as pd
-"""
-data = np.random.normal(0, 1, 50)
-
-model = GenericLikelihoodModel(data)
-print(model.loglike(np.random.normal(0, 1, 50)))
-"""
-"""
-y = np.random.random((3, 3))
-y = y + y.T
-print(y)
-
-l, d, perm = ldl(y, lower=False)
-print(l)
-print(d)
-print(perm)
-print(l[perm])
-
-print(l@d@l.T)
-"""
-"""
-data = pd.read_csv("Nile.csv")
-data = data.set_index('time')
-data = data['Nile']
-
-print(data.iloc[:10])
-
-print(data.isna().sum())
+from tools import adfTest
 
 
-print(np.concat((np.empty(0), np.array([1, 2, 3]))))
-"""
+y = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 
+max_lag=4
+lag = 2
+print(y[-(lag+1):-(11-max_lag+lag)])
 
-y = np.array([True, True, False, False, False, True])
-print(np.sum(y))
-
+for i in range(max_lag+1):
+    print(y[max_lag-i: 10-i])
