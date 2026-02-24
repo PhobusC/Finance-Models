@@ -6,16 +6,32 @@ from abc import abstractmethod
 from functools import partial
 
 
-def ols(Y, X):
+def ols(y, X):
     """
     Returns Beta hat matrix under OLS assumptions
     Y is data
     X is regressors
     """
 
-    return np.linalg.inv(X.T@X)@X.T@Y
+    # Since X.T@X is symmetric, maybe use LDL decomposition
+    return np.linalg.inv(X.T@X)@X.T@y
 
+def loglike_ols(obs, regressors, params, var=None):
+    """
+    Calculates loglikelihood given parameters
+    Params: np array representing model parameters
+    var: float or None representing the variance of the data
+        if var=None, calculate Average Squared Residual
+    """
+    nobs = len(obs)
+    SSR = np.sum((obs - regressors@params)**2)
 
+    if var is None:
+        var = SSR/nobs
+
+    return (-nobs/2)*(math.log(math.pi) + math.log(var) + 1)
+
+# There's also an ADF-GLS test?
 def adfTest(series, criterion="aic", model=1, conf_level=0.05):
     """
     Tests for stationarity/unit root in time series
@@ -36,12 +52,13 @@ def adfTest(series, criterion="aic", model=1, conf_level=0.05):
         raise ValueError("Series should be 1D")
 
     # Fit OLS model to differenced series, using information criterion
-    # Best_model is a tuple, (max lag, criterion scpre)
+    # Best_model is a tuple, (max lag, criterion score)
+    best_model = None
 
     # Schwert/Ng-Perron rule?
     diff_series = np.diff(series)
     diff_len = len(diff_series)
-    best_model = None
+    
 
     
 
@@ -50,7 +67,7 @@ def adfTest(series, criterion="aic", model=1, conf_level=0.05):
     
     # Matrices for OLS
     # Matrices are in ascending order
-    p_max = math.floor(12 * math.pow(len(series)/10, 0.25))
+    p_max = math.floor(12 * math.pow(len(series)/10, 0.25))  # Schwert rule
     for p in range(1, p_max+1):
         if model == 1: # no constant no drift
             
@@ -59,28 +76,43 @@ def adfTest(series, criterion="aic", model=1, conf_level=0.05):
             for i in range(1, p+1):
                 X[:, i] = diff_series[p-i: diff_len-i]
 
-            Y = diff_series[p:]
+            y = np.expand_dims(diff_series[p:], axis=-1)
 
 
         elif model == 2: # constant only
             X = np.empty(shape=(diff_len-p, p+2), dtype=float)
-            X[:, 0] = np.ones(shape=(diff_len-p))
-            X[:, 1] = series[p:-1]
+            X[:, 0] = series[p:-1]
+            X[:, 1] = np.ones(shape=(diff_len-p))
             for i in range(1, p+1):
                 X[:, i+1] = diff_series[p-i: diff_len-i]
             
-            Y = diff_series[p:]
+            y = np.expand_dims(diff_series[p:], axis=-1)
 
         elif model == 3:
             X = np.empty(shape=(diff_len-p, p+3))
-            X[:, 0] = np.ones(shape=(diff_len-p))
-            X[:, 1] = np.arange(start=p+2, stop=diff_len+2)
-            X[:, 2] = series[p:-1]
+            X[:, 0] = series[p:-1]
+            X[:, 1] = np.ones(shape=(diff_len-p))
+            X[:, 2] = np.arange(start=p+2, stop=diff_len+2)
             for i in range(1, p+1):
                 X[:, i+2] = diff_series[p-i: diff_len-i]
 
-            Y = diff_series[p:]
+            y = np.expand_dims(diff_series[p:], axis=-1)
 
+        
+        beta_hat = ols(y, X)
+
+        # Calculate Loglik and AIC
+        if best_model is None:
+            best_model = (p, aic(loglike_ols(y, X, beta_hat), beta_hat.shape[0]))
+        else:
+            model_aic = aic(loglike_ols(y, X, beta_hat), beta_hat.shape[0])
+            if model_aic < best_model[1]:
+                best_model = (p, model_aic)
+
+
+
+    gamma = best_model[0, 0]
+    # Calculate critical value
 
 
     return best_model
