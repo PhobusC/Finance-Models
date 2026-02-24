@@ -14,7 +14,15 @@ def ols(y, X):
     """
 
     # Since X.T@X is symmetric, maybe use LDL decomposition
-    return np.linalg.inv(X.T@X)@X.T@y
+    lower, d, perm = ldl(X.T@X, lower = True)
+    DLB = solve_triangular(lower[perm], X.T@y, lower=True)
+    LB = np.array([DLB[i]/d[i, i] for i in range(DLB.shape(0))])
+    beta_hat = solve_triangular(lower[perm].T, LB, lower=False)
+
+
+    # return np.linalg.inv(X.T@X)@X.T@y
+    return beta_hat
+
 
 def loglike_ols(obs, regressors, params, var=None):
     """
