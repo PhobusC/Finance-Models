@@ -6,13 +6,14 @@ from abc import abstractmethod
 from functools import partial
 
 
-def ols(y, X):
+def ols(y, X, const=True):
     """
     Returns Beta hat matrix under OLS assumptions
     Y is data
     X is regressors
     """
-
+    if const:
+        X = np.concat((np.ones(shape=(X.shape[0], 1)), X))
     # Since X.T@X is symmetric, maybe use LDL decomposition
     lower, d, perm = ldl(X.T@X, lower = True)
     DLB = solve_triangular(lower[perm], X.T@y, lower=True)
@@ -35,8 +36,8 @@ def loglike_ols(obs, regressors, params, var=None):
 
     if var is None:
         var = SSR/nobs
-
-    return (-nobs/2)*(math.log(math.pi) + math.log(var) + 1)
+    # Variance is too high for some reason
+    return (-nobs/2)*(math.log(2*math.pi) + math.log(var) + 1)
 
 # Engel-Granger test?
 def mackinnon_crit_values(model_type, sig, N=1):
@@ -221,8 +222,10 @@ def adfTest(series, criterion="aic", model='ct', sig=0.05):
 
     # Matrices for OLS
     # Matrices are in ascending order
+    
     p_max = math.floor(12 * math.pow(len(series)/10, 0.25))  # Schwert rule
-    for p in range(1, p_max+1):
+    print(f"DEBUG max lag: {p_max}")
+    for p in range(p_max+1):
         if model == 'nc': # no constant no drift
             
             X = np.empty(shape=(diff_len-p, p+1), dtype=float)
@@ -255,8 +258,13 @@ def adfTest(series, criterion="aic", model='ct', sig=0.05):
             pass
 
         
-        beta_hat = ols(y, X)
-
+        beta_hat = ols(y, X, const=False)
+        
+        #print("DEBUG")
+        #print(y)
+        #print(X)
+        #print(beta_hat)
+        #print(aic(loglike_ols(y, X, beta_hat), beta_hat.shape[0]))
         # Calculate Loglik and AIC
         if best_model is None:
             best_model = (y, beta_hat, X, aic(loglike_ols(y, X, beta_hat), beta_hat.shape[0]))
@@ -273,8 +281,13 @@ def adfTest(series, criterion="aic", model='ct', sig=0.05):
     resid_var = SSR/(nobs-best_model[1].shape[0])
 
     # LDL inv?
-    cov = np.linalg.inv(best_model[2].T@best_model[2]) * resid_var
+    cov = np.linalg.pinv(best_model[2].T@best_model[2]) * resid_var
     gamma_SE = math.sqrt(cov[0, 0])
+    # Check the scale of the diagonal elements
+    print(f"Covariance Matrix Diagonal: {np.diag(cov)}")
+
+    # Check the Condition Number (Higher than 1e10 is bad)
+    print(f"Condition Number: {np.linalg.cond(best_model[2])}")
 
     print(f"DEBUG: Gamma coefficient: {gamma}")
     print(f"DEBUG: Gamma Standard Error: {gamma_SE}")
@@ -302,8 +315,8 @@ def aic(llk, nmodel_params) -> float:
     """
     Calculates the Akaike Information Criterion for the given model
     """
-
-    return -2.0 * llk + 2.0 * nmodel_params
+    print(f"DEBUG loglike: {llk}, nmodel_params: {nmodel_params}")
+    return (-2.0 * llk) + (2.0 * nmodel_params)
 
 
 class MLEModel:
