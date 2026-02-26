@@ -231,39 +231,35 @@ def adfTest(series, criterion="aic", model='ct', sig=0.05):
     # Matrices are in ascending order
     
     p_max = math.floor(12 * math.pow(len(series)/10, 0.25))  # Schwert rule
-    print(f"DEBUG max lag: {p_max}")
+    y = np.expand_dims(diff_series[p_max:], axis=-1)
     for p in range(p_max+1): #p_max + 1
         if model == 'nc': # no constant no drift
             
-            X = np.empty(shape=(diff_len-p, p+1), dtype=float)
-            X[:, 0] = series[p:-1]
+            X = np.empty(shape=(diff_len-p_max, p+1), dtype=float)
+            X[:, 0] = series[p_max:-1]
             for i in range(1, p+1):
-                X[:, i] = diff_series[p-i: diff_len-i]
+                X[:, i] = diff_series[p_max-i: diff_len-i]
 
-            y = np.expand_dims(diff_series[p:], axis=-1)
 
         elif model == 'c': # constant only
-            X = np.empty(shape=(diff_len-p, p+2), dtype=float)
-            X[:, 0] = series[p:-1]
-            X[:, 1] = np.ones(shape=(diff_len-p))
+            X = np.empty(shape=(diff_len-p_max, p+2), dtype=float)
+            X[:, 0] = series[p_max:-1]
+            X[:, 1] = np.ones(shape=(diff_len-p_max))
             for i in range(1, p+1):
-                X[:, i+1] = diff_series[p-i: diff_len-i]
+                X[:, i+1] = diff_series[p_max-i: diff_len-i]
             
-            y = np.expand_dims(diff_series[p:], axis=-1)
 
         elif model == 'ct':
-            X = np.empty(shape=(diff_len-p, p+3))
-            X[:, 0] = series[p:-1]
-            X[:, 1] = np.ones(shape=(diff_len-p))
-            X[:, 2] = np.arange(start=p+2, stop=diff_len+2)
+            X = np.empty(shape=(diff_len-p_max, p+3))
+            X[:, 0] = series[p_max:-1]
+            X[:, 1] = np.ones(shape=(diff_len-p_max))
+            X[:, 2] = np.arange(start=p_max+2, stop=diff_len+2)
             for i in range(1, p+1):
-                X[:, i+2] = diff_series[p-i: diff_len-i]
+                X[:, i+2] = diff_series[p_max-i: diff_len-i]
 
-            y = np.expand_dims(diff_series[p:], axis=-1)
         
         elif model == 'ctt':
             pass
-
         
         beta_hat = ols(y, X, const=False)
         
@@ -290,20 +286,13 @@ def adfTest(series, criterion="aic", model='ct', sig=0.05):
     # LDL inv?
     cov = np.linalg.pinv(best_model[2].T@best_model[2]) * resid_var
     gamma_SE = math.sqrt(cov[0, 0])
-    # Check the scale of the diagonal elements
-    print(f"Covariance Matrix Diagonal: {np.diag(cov)}")
-
-    # Check the Condition Number (Higher than 1e10 is bad)
-    print(f"Condition Number: {np.linalg.cond(best_model[2])}")
-
-    print(f"DEBUG: Gamma coefficient: {gamma}")
-    print(f"DEBUG: Gamma Standard Error: {gamma_SE}")
     t = gamma/gamma_SE
 
 
     mac_coeffs = mackinnon_crit_values(model, sig, N=1)
     crit_value = mac_coeffs[0] + (mac_coeffs[1]/nobs) + (mac_coeffs[2]/(nobs**2)) + (mac_coeffs[3]/(nobs**3))
 
+    # TODO change return
     print(f"Test statistic: {t}, Critical value: {crit_value}")
     if t < crit_value:
         print(f"At the {sig}% level, the series is stationary")
@@ -321,7 +310,6 @@ def aic(llk, nmodel_params) -> float:
     """
     Calculates the Akaike Information Criterion for the given model
     """
-    print(f"DEBUG loglike: {llk}, nmodel_params: {nmodel_params}, aic: {(-2.0 * llk) + (2.0 * nmodel_params)}")
     return (-2.0 * llk) + (2.0 * nmodel_params)
 
 

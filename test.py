@@ -22,6 +22,3 @@ print(model[2].shape)
 result = OLS(model[0], model[2]).fit()
 print(f"True llk: {result.llf}")
 print(f"Calculated llk: {loglike_ols(model[0], model[2], model[1])}")
-
-print(result.params)
-print(model[1])
