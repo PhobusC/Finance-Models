@@ -13,18 +13,21 @@ def ols(y, X, const=True):
     X is regressors
     """
     if const:
-        X = np.concat((np.ones(shape=(X.shape[0], 1)), X))
+        X = np.concatenate((np.ones(shape=(X.shape[0], 1)), X), axis=1)
     # Since X.T@X is symmetric, maybe use LDL decomposition
+    #TODO something wrong with this block
+    """
     lower, d, perm = ldl(X.T@X, lower = True)
     DLB = solve_triangular(lower[perm], X.T@y, lower=True)
     LB = np.array([DLB[i]/d[i, i] for i in range(DLB.shape[0])])
     beta_hat = solve_triangular(lower[perm].T, LB, lower=False)
+    """
 
 
-    # return np.linalg.inv(X.T@X)@X.T@y
-    return beta_hat
+    return np.linalg.inv(X.T@X)@X.T@y
+    #return beta_hat
 
-def loglike_ols(obs, regressors, params, var=None):
+def loglike_ols(obs, regressors, params, var=None, biased=True):
     """
     Calculates loglikelihood given parameters
     Params: np array representing model parameters
@@ -35,7 +38,11 @@ def loglike_ols(obs, regressors, params, var=None):
     SSR = np.sum((obs - regressors@params)**2)
 
     if var is None:
-        var = SSR/nobs
+        if biased:
+            var = SSR/nobs
+        else:
+            var = SSR/(nobs - params.shape[0])
+        
     # Variance is too high for some reason
     return (-nobs/2)*(math.log(2*math.pi) + math.log(var) + 1)
 
@@ -225,7 +232,7 @@ def adfTest(series, criterion="aic", model='ct', sig=0.05):
     
     p_max = math.floor(12 * math.pow(len(series)/10, 0.25))  # Schwert rule
     print(f"DEBUG max lag: {p_max}")
-    for p in range(p_max+1):
+    for p in range(p_max+1): #p_max + 1
         if model == 'nc': # no constant no drift
             
             X = np.empty(shape=(diff_len-p, p+1), dtype=float)
@@ -298,7 +305,6 @@ def adfTest(series, criterion="aic", model='ct', sig=0.05):
     crit_value = mac_coeffs[0] + (mac_coeffs[1]/nobs) + (mac_coeffs[2]/(nobs**2)) + (mac_coeffs[3]/(nobs**3))
 
     print(f"Test statistic: {t}, Critical value: {crit_value}")
-    print(t<crit_value)
     if t < crit_value:
         print(f"At the {sig}% level, the series is stationary")
     else:
@@ -315,7 +321,7 @@ def aic(llk, nmodel_params) -> float:
     """
     Calculates the Akaike Information Criterion for the given model
     """
-    print(f"DEBUG loglike: {llk}, nmodel_params: {nmodel_params}")
+    print(f"DEBUG loglike: {llk}, nmodel_params: {nmodel_params}, aic: {(-2.0 * llk) + (2.0 * nmodel_params)}")
     return (-2.0 * llk) + (2.0 * nmodel_params)
 
 
@@ -542,7 +548,7 @@ class KalmanFilter:
 
                     lower, d, perm = ldl(innov_var, lower=True)  # LDL form of F
 
-                    # Calculate gain with LDL
+                    # Calculate gain with LDL TODO MAYBE ERROR
                     PZt = cov@Z_masked.T
                     W = solve_triangular(lower[perm], PZt.T, lower=True)
                     U = np.array([W[j]/d[j, j] for j in range(d.shape[0])])
@@ -589,7 +595,7 @@ class KalmanFilter:
                             for i in range(d.shape[0]): # is there a prettier way to do this?
                                 innov_var_size *= d[i, i]
                             
-                            # Solve for quadratic term
+                            # Solve for quadratic term TODO MAYBE ERROR
                             z = solve_triangular(lower[perm], innov, lower=True)
                             quad = np.sum(z.dot(np.array([z[j]/d[j, j] for j in range(d.shape[0])])))
 

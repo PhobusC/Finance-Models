@@ -17,7 +17,7 @@ print(adfstat, usedlag)
 print()
 model, t = adfTest(y, model='ct')
 #print(model[2][:, 0:5])
-#print(model[2].shape)
+print(model[2].shape)
 
 result = OLS(model[0], model[2]).fit()
 print(f"True llk: {result.llf}")
