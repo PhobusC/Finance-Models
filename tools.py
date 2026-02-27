@@ -16,16 +16,19 @@ def ols(y, X, const=True):
         X = np.concatenate((np.ones(shape=(X.shape[0], 1)), X), axis=1)
     # Since X.T@X is symmetric, maybe use LDL decomposition
     #TODO something wrong with this block
-    """
-    lower, d, perm = ldl(X.T@X, lower = True)
-    DLB = solve_triangular(lower[perm], X.T@y, lower=True)
-    LB = np.array([DLB[i]/d[i, i] for i in range(DLB.shape[0])])
-    beta_hat = solve_triangular(lower[perm].T, LB, lower=False)
-    """
+    
+    lower, d, perm = ldl(X.T@X, lower=True)
+    m1 = solve_triangular(lower[perm], (X.T@y)[perm], lower=True)
+
+    m2 = np.linalg.solve(d, m1)
+
+    m3 = solve_triangular(lower[perm].T, m2)
+
+    beta_hat = np.eye(m3.shape[0])[perm].T@m3   # I really don't like this line
+    
 
 
-    return np.linalg.inv(X.T@X)@X.T@y
-    #return beta_hat
+    return beta_hat#, np.linalg.inv(X.T@X)@X.T@y
 
 def loglike_ols(obs, regressors, params, var=None, biased=True):
     """

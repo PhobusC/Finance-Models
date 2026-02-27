@@ -6,6 +6,7 @@ from tools import mackinnon_crit_values
 from tools import adfTest
 from tools import aic
 from tools import loglike_ols
+from tools import ols
 from statsmodels.tsa.stattools import adfuller
 from statsmodels.regression.linear_model import OLS
 
@@ -22,3 +23,7 @@ print(model[2].shape)
 result = OLS(model[0], model[2]).fit()
 print(f"True llk: {result.llf}")
 print(f"Calculated llk: {loglike_ols(model[0], model[2], model[1])}")
+
+
+
+
